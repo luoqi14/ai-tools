@@ -1,82 +1,37 @@
+# ===================================
+# AI Tools Project - Complete .gitignore
+# ===================================
+
+# ===== Node.js / Frontend =====
 # Dependencies
 node_modules/
+.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+jspm_packages/
+
+# Package manager logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
-
-# Production builds
-.next/
-out/
-build/
-dist/
-
-# Environment variables
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
-.venv/
-
-# IDE and Editor files
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-.history/
-
-# OS generated files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-
-# Logs
-*.log
-logs/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Runtime data
-pids
-*.pid
-*.seed
-*.pid.lock
-
-# Coverage directory used by tools like istanbul
-coverage/
-*.lcov
-
-# nyc test coverage
-.nyc_output
-
-# Dependency directories
-node_modules/
-jspm_packages/
+.pnpm-debug.log*
 
 # Optional npm cache directory
 .npm
 
 # Optional eslint cache
 .eslintcache
+
+# Microbundle cache
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
 
 # Optional REPL history
 .node_repl_history
@@ -87,26 +42,117 @@ jspm_packages/
 # Yarn Integrity file
 .yarn-integrity
 
-# dotenv environment variables file
-.env
-.env.test
+# ===== Next.js / React =====
+# Next.js build output
+.next/
+out/
 
-# parcel-bundler cache (https://parceljs.org/)
+# Next.js TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# ===== Build outputs =====
+build/
+dist/
+coverage/
+
+# ===== Bundler cache =====
+# Parcel
 .cache
 .parcel-cache
 
-# next.js build output
-.next
-
-# nuxt.js build output
+# Nuxt.js
 .nuxt
 
-# vuepress build output
+# Vuepress
 .vuepress/dist
+
+# ===== Python / Backend =====
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+
+# ===== Environment Variables =====
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.*
+!.env.example
+
+# ===== IDE and Editor files =====
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.history/
+
+# Stores VSCode versions used for testing VSCode extensions
+.vscode-test
+
+# ===== OS generated files =====
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*.pem
+
+# ===== Logs =====
+*.log
+logs/
+
+# ===== Runtime data =====
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# ===== Coverage =====
+coverage/
+*.lcov
+.nyc_output
+
+# ===== Cloud / Deployment =====
+# Vercel
+.vercel
 
 # Serverless directories
 .serverless
 
+# ===== Cache =====
 # FuseBox cache
 .fusebox/
 
@@ -116,9 +162,11 @@ jspm_packages/
 # TernJS port file
 .tern-port
 
-# Docker
+# ===== Docker =====
 docker-compose.override.yml
 
-# Temporary files
+# ===== Temporary files =====
 *.tmp
-*.temp 
+*.temp
+tmp/
+temp/ 

@@ -1,11 +1,9 @@
 #!/bin/bash
 
-# AI工具集部署脚本
-# 使用方法: ./deploy.sh [环境] [操作]
-# 环境: prod (生产环境)
-# 操作: build, up, down, restart, logs
+# AI Tools 项目部署脚本
+# 支持缓存优化和并行构建
 
-set -e
+set -e  # 遇到错误立即退出
 
 # 颜色定义
 RED='\033[0;31m'
@@ -14,183 +12,243 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# 日志函数
-log_info() {
-    echo -e "${BLUE}[INFO]${NC} $1"
+# 项目信息
+PROJECT_NAME="AI Tools"
+COMPOSE_FILE="docker-compose.yml"
+
+# 检测 Docker Compose 命令
+if command -v docker-compose &> /dev/null; then
+    DOCKER_COMPOSE_CMD="docker-compose"
+elif command -v docker &> /dev/null && docker compose version &> /dev/null; then
+    DOCKER_COMPOSE_CMD="docker compose"
+else
+    echo -e "${RED}错误: 未找到 docker-compose 或 docker compose 命令${NC}"
+    exit 1
+fi
+
+# 打印带颜色的消息
+print_message() {
+    echo -e "${GREEN}[$(date '+%Y-%m-%d %H:%M:%S')] $1${NC}"
 }
 
-log_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
+print_warning() {
+    echo -e "${YELLOW}[$(date '+%Y-%m-%d %H:%M:%S')] $1${NC}"
 }
 
-log_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
+print_error() {
+    echo -e "${RED}[$(date '+%Y-%m-%d %H:%M:%S')] $1${NC}"
 }
 
-log_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
+print_info() {
+    echo -e "${BLUE}[$(date '+%Y-%m-%d %H:%M:%S')] $1${NC}"
 }
 
-# 检查Docker是否安装
+# 检查 Docker 和 Docker Compose
 check_docker() {
+    print_info "检查 Docker 环境..."
+    
     if ! command -v docker &> /dev/null; then
-        log_error "Docker未安装，请先安装Docker"
+        print_error "Docker 未安装，请先安装 Docker"
         exit 1
     fi
     
-    # 检查Docker Compose（支持新旧两种格式）
-    if command -v docker-compose &> /dev/null; then
-        DOCKER_COMPOSE_CMD="docker-compose"
-    elif docker compose version &> /dev/null; then
-        DOCKER_COMPOSE_CMD="docker compose"
-    else
-        log_error "Docker Compose未安装，请先安装Docker Compose"
+    if ! docker info &> /dev/null; then
+        print_error "Docker 服务未运行，请启动 Docker"
         exit 1
     fi
+    
+    print_message "Docker 环境检查通过"
 }
 
-# 构建镜像
+# 启用 BuildKit 以支持缓存
+enable_buildkit() {
+    print_info "启用 Docker BuildKit..."
+    export DOCKER_BUILDKIT=1
+    export COMPOSE_DOCKER_CLI_BUILD=1
+    print_message "BuildKit 已启用"
+}
+
+# 清理旧的容器和镜像
+cleanup() {
+    print_info "清理旧的容器和镜像..."
+    
+    # 停止并删除旧容器
+    $DOCKER_COMPOSE_CMD -f $COMPOSE_FILE down --remove-orphans 2>/dev/null || true
+    
+    # 清理悬空镜像（但保留缓存）
+    docker image prune -f 2>/dev/null || true
+    
+    print_message "清理完成"
+}
+
+# 构建镜像（利用缓存）
 build_images() {
-    log_info "开始构建Docker镜像..."
-    $DOCKER_COMPOSE_CMD build --no-cache
-    log_success "Docker镜像构建完成"
+    print_info "构建 Docker 镜像（利用缓存）..."
+    
+    # 并行构建前端和后端
+    $DOCKER_COMPOSE_CMD -f $COMPOSE_FILE build --parallel --progress=plain
+    
+    print_message "镜像构建完成"
 }
 
-# 启动服务
-start_services() {
-    log_info "启动AI工具集服务..."
-    $DOCKER_COMPOSE_CMD up -d
-    log_success "服务启动完成"
+# 部署应用
+deploy() {
+    print_info "部署 $PROJECT_NAME..."
     
-    # 等待服务启动
-    log_info "等待服务启动..."
-    sleep 10
+    # 启动服务
+    $DOCKER_COMPOSE_CMD -f $COMPOSE_FILE up -d
     
-    # 检查服务状态
-    check_health
-}
-
-# 停止服务
-stop_services() {
-    log_info "停止AI工具集服务..."
-    $DOCKER_COMPOSE_CMD down
-    log_success "服务已停止"
-}
-
-# 重启服务
-restart_services() {
-    log_info "重启AI工具集服务..."
-    $DOCKER_COMPOSE_CMD restart
-    log_success "服务已重启"
-    
-    # 等待服务启动
-    log_info "等待服务启动..."
-    sleep 10
-    
-    # 检查服务状态
-    check_health
-}
-
-# 查看日志
-view_logs() {
-    log_info "查看服务日志..."
-    $DOCKER_COMPOSE_CMD logs -f
+    print_message "部署完成"
 }
 
 # 健康检查
-check_health() {
-    log_info "检查服务健康状态..."
+health_check() {
+    print_info "执行健康检查..."
     
-    # 检查后端健康状态
-    if curl -f -s http://localhost:8003/health > /dev/null; then
-        log_success "后端服务健康检查通过"
+    # 等待服务启动
+    sleep 10
+    
+    # 检查后端服务
+    if curl -f http://localhost:8003/health &> /dev/null; then
+        print_message "后端服务健康检查通过"
     else
-        log_error "后端服务健康检查失败"
+        print_warning "后端服务健康检查失败，请检查日志"
     fi
     
-    # 检查前端健康状态
-    if curl -f -s http://localhost:3003/health.html > /dev/null; then
-        log_success "前端服务健康检查通过"
+    # 检查前端服务
+    if curl -f http://localhost:3003/health.html &> /dev/null; then
+        print_message "前端服务健康检查通过"
     else
-        log_error "前端服务健康检查失败"
+        print_warning "前端服务健康检查失败，请检查日志"
     fi
 }
 
 # 显示服务状态
 show_status() {
-    log_info "服务状态:"
-    $DOCKER_COMPOSE_CMD ps
+    print_info "服务状态:"
+    $DOCKER_COMPOSE_CMD -f $COMPOSE_FILE ps
     
-    log_info "服务访问地址:"
-    echo "前端: http://localhost:3003"
-    echo "后端: http://localhost:8003"
-    echo "注意: 生产环境请通过您配置的Nginx代理访问"
+    print_info "服务访问地址:"
+    echo "  前端: http://localhost:3003"
+    echo "  后端: http://localhost:8003"
 }
 
-# 清理资源
-cleanup() {
-    log_info "清理Docker资源..."
-    $DOCKER_COMPOSE_CMD down -v
-    docker system prune -f
-    log_success "资源清理完成"
+# 显示日志
+show_logs() {
+    print_info "显示服务日志..."
+    $DOCKER_COMPOSE_CMD -f $COMPOSE_FILE logs --tail=50
+}
+
+# 停止服务
+stop() {
+    print_info "停止 $PROJECT_NAME..."
+    $DOCKER_COMPOSE_CMD -f $COMPOSE_FILE down
+    print_message "服务已停止"
+}
+
+# 重启服务
+restart() {
+    print_info "重启 $PROJECT_NAME..."
+    $DOCKER_COMPOSE_CMD -f $COMPOSE_FILE restart
+    print_message "服务已重启"
+}
+
+# 完整部署流程
+full_deploy() {
+    print_message "开始部署 $PROJECT_NAME..."
+    
+    check_docker
+    enable_buildkit
+    cleanup
+    build_images
+    deploy
+    health_check
+    show_status
+    
+    print_message "部署完成! 🎉"
+}
+
+# 快速部署（利用缓存）
+quick_deploy() {
+    print_message "快速部署 $PROJECT_NAME（利用缓存）..."
+    
+    check_docker
+    enable_buildkit
+    
+    # 不清理，直接构建和部署
+    $DOCKER_COMPOSE_CMD -f $COMPOSE_FILE build --parallel
+    $DOCKER_COMPOSE_CMD -f $COMPOSE_FILE up -d
+    
+    health_check
+    show_status
+    
+    print_message "快速部署完成! ⚡"
+}
+
+# 显示使用帮助
+show_help() {
+    echo "AI Tools 部署脚本"
+    echo ""
+    echo "用法: $0 [命令]"
+    echo ""
+    echo "命令:"
+    echo "  deploy      完整部署（清理+构建+部署）"
+    echo "  quick       快速部署（利用缓存）"
+    echo "  build       仅构建镜像"
+    echo "  start       启动服务"
+    echo "  stop        停止服务"
+    echo "  restart     重启服务"
+    echo "  status      显示服务状态"
+    echo "  logs        显示服务日志"
+    echo "  cleanup     清理旧容器和镜像"
+    echo "  help        显示此帮助信息"
+    echo ""
+    echo "示例:"
+    echo "  $0 deploy   # 完整部署"
+    echo "  $0 quick    # 快速部署"
+    echo "  $0 logs     # 查看日志"
 }
 
 # 主函数
 main() {
-    local action=${1:-"help"}
-    
-    case $action in
+    case "${1:-help}" in
+        "deploy")
+            full_deploy
+            ;;
+        "quick")
+            quick_deploy
+            ;;
         "build")
             check_docker
+            enable_buildkit
             build_images
             ;;
-        "up"|"start")
+        "start")
             check_docker
-            start_services
-            show_status
+            deploy
             ;;
-        "down"|"stop")
-            check_docker
-            stop_services
+        "stop")
+            stop
             ;;
         "restart")
-            check_docker
-            restart_services
-            show_status
-            ;;
-        "logs")
-            view_logs
+            restart
             ;;
         "status")
             show_status
             ;;
-        "health")
-            check_health
+        "logs")
+            show_logs
             ;;
         "cleanup")
             cleanup
             ;;
-        "deploy")
-            check_docker
-            build_images
-            start_services
-            show_status
+        "help"|"--help"|"-h")
+            show_help
             ;;
-        "help"|*)
-            echo "AI工具集部署脚本"
-            echo "使用方法: ./deploy.sh [操作]"
-            echo ""
-            echo "可用操作:"
-            echo "  build    - 构建Docker镜像"
-            echo "  up       - 启动服务"
-            echo "  down     - 停止服务"
-            echo "  restart  - 重启服务"
-            echo "  logs     - 查看日志"
-            echo "  status   - 查看状态"
-            echo "  health   - 健康检查"
-            echo "  cleanup  - 清理资源"
-            echo "  deploy   - 完整部署（构建+启动）"
-            echo "  help     - 显示帮助"
+        *)
+            print_error "未知命令: $1"
+            show_help
+            exit 1
             ;;
     esac
 }

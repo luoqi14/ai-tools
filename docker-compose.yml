@@ -6,6 +6,11 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      # 启用 BuildKit 缓存
+      cache_from:
+        - ai-tools-backend:latest
+      args:
+        - BUILDKIT_INLINE_CACHE=1
     container_name: ai-tools-backend
     ports:
       - "8003:8003"
@@ -15,6 +20,9 @@ services:
     restart: unless-stopped
     networks:
       - ai-tools-network
+    # 添加数据卷用于持久化
+    volumes:
+      - backend_data:/app/data
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
       interval: 30s
@@ -27,6 +35,11 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      # 启用 BuildKit 缓存
+      cache_from:
+        - ai-tools-frontend:latest
+      args:
+        - BUILDKIT_INLINE_CACHE=1
     container_name: ai-tools-frontend
     ports:
       - "3003:3003"
@@ -37,6 +50,9 @@ services:
       - ai-tools-network
     depends_on:
       - backend
+    # 添加数据卷用于持久化
+    volumes:
+      - frontend_data:/app/data
     healthcheck:
       test:
         [
@@ -57,5 +73,13 @@ networks:
     driver: bridge
 
 volumes:
+  # 持久化数据卷
   backend_data:
+    driver: local
   frontend_data:
+    driver: local
+  # 构建缓存卷
+  pnpm_cache:
+    driver: local
+  pip_cache:
+    driver: local

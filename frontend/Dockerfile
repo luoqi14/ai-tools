@@ -4,29 +4,32 @@ FROM node:18-alpine AS builder
 # 设置工作目录
 WORKDIR /app
 
-# 复制package文件
-COPY package*.json ./
-COPY pnpm-lock.yaml ./
-
-# 安装pnpm
+# 安装pnpm（利用层缓存）
 RUN npm install -g pnpm
 
-# 安装依赖
-RUN pnpm install --frozen-lockfile
+# 复制package文件（单独一层，利用缓存）
+COPY package.json pnpm-lock.yaml ./
 
-# 复制应用代码
+# 配置pnpm缓存目录
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+
+# 安装依赖（只有package.json变化时才重新安装）
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
+
+# 复制应用代码（代码变化不会影响依赖安装缓存）
 COPY . .
 
 # 构建静态文件
 RUN pnpm build
 
 # 生产阶段 - 使用简单的静态文件服务器
-FROM node:18-alpine
+FROM node:18-alpine AS runner
 
 # 设置工作目录
 WORKDIR /app
 
-# 全局安装serve来提供静态文件服务
+# 全局安装serve来提供静态文件服务（利用层缓存）
 RUN npm install -g serve
 
 # 复制构建的静态文件
