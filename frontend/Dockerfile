@@ -20,6 +20,10 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 # 复制应用代码（代码变化不会影响依赖安装缓存）
 COPY . .
 
+# 接收构建参数并设置为环境变量
+ARG NEXT_PUBLIC_API_BASE_URL
+ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
+
 # 构建静态文件
 RUN pnpm build
 
