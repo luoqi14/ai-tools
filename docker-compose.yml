@@ -13,10 +13,13 @@ services:
         - BUILDKIT_INLINE_CACHE=1
     container_name: ai-tools-backend
     ports:
-      - "8003:8003"
+      - "${BACKEND_PORT:-8003}:8003"
     environment:
       - PORT=8003
-      - FLASK_ENV=production
+      - FLASK_ENV=${FLASK_ENV:-production}
+      - BFL_API_KEY=${BFL_API_KEY:-564cb439-9ba9-44d7-b885-bb2271a79224}
+      - SECRET_KEY=${SECRET_KEY:-ai-tools-secret-key-2024}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3003}
     restart: unless-stopped
     networks:
       - ai-tools-network
@@ -42,7 +45,7 @@ services:
         - BUILDKIT_INLINE_CACHE=1
     container_name: ai-tools-frontend
     ports:
-      - "3003:3003"
+      - "${FRONTEND_PORT:-3003}:3003"
     environment:
       - NODE_ENV=production
     restart: unless-stopped
