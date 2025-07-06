@@ -1,0 +1,56 @@
+# 构建阶段
+FROM node:18-alpine AS builder
+
+# 设置工作目录
+WORKDIR /app
+
+# 复制package文件
+COPY package*.json ./
+COPY pnpm-lock.yaml ./
+
+# 安装pnpm
+RUN npm install -g pnpm
+
+# 安装依赖
+RUN pnpm install --frozen-lockfile
+
+# 复制应用代码
+COPY . .
+
+# 构建静态文件
+RUN pnpm build
+
+# 生产阶段 - 使用简单的静态文件服务器
+FROM node:18-alpine
+
+# 设置工作目录
+WORKDIR /app
+
+# 全局安装serve来提供静态文件服务
+RUN npm install -g serve
+
+# 复制构建的静态文件
+COPY --from=builder /app/out ./public
+
+# 创建健康检查文件
+RUN echo '<!DOCTYPE html><html><head><title>Health Check</title></head><body><h1>OK</h1></body></html>' > ./public/health.html
+
+# 创建非root用户
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nextjs -u 1001 -G nodejs
+
+# 更改文件所有权
+RUN chown -R nextjs:nodejs /app
+
+# 切换到非root用户
+USER nextjs
+
+# 暴露端口
+EXPOSE 3003
+
+# 健康检查
+HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:3003/health.html || exit 1
+
+# 启动静态文件服务器
+CMD ["serve", "-s", "public", "-l", "3003"] 

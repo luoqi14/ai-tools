@@ -1,0 +1,11 @@
+ai-tools/
+├── frontend/           # 前端项目
+├── backend/           # 后端项目
+├── docs/              # 项目文档
+├── scripts/           # 部署和工具脚本
+│   ├── start.sh
+│   ├── stop.sh
+│   └── deploy.sh
+├── .gitignore         # Git忽略文件
+├── README.md          # 项目说明
+└── docker-compose.yml # Docker配置（可选） 

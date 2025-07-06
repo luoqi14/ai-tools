@@ -1,0 +1,21 @@
+@import "tailwindcss";
+@plugin "tailwindcss-animate";
+
+@custom-variant dark (&:is(.dark *));
+
+/* 自定义磨砂玻璃效果 - 使用 oklch 颜色 */
+.glass-panel {
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  background: oklch(1 0 0 / 0.1);
+  border: 1px solid oklch(1 0 0 / 0.2);
+  box-shadow: 0 8px 32px oklch(0 0 0 / 0.1);
+}
+
+.glass-panel-dark {
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  background: oklch(0 0 0 / 0.2);
+  border: 1px solid oklch(1 0 0 / 0.1);
+  box-shadow: 0 8px 32px oklch(0 0 0 / 0.3);
+}

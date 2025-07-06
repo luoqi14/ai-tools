@@ -1,0 +1,140 @@
+@import "tailwindcss";
+@plugin "tailwindcss-animate";
+
+@layer base {
+  :root {
+    --background: 1 0 0;
+    --foreground: 0.09 0.005 286;
+    --card: 1 0 0;
+    --card-foreground: 0.09 0.005 286;
+    --popover: 1 0 0;
+    --popover-foreground: 0.09 0.005 286;
+    --primary: 0.09 0.005 286;
+    --primary-foreground: 0.98 0 0;
+    --secondary: 0.96 0.006 286;
+    --secondary-foreground: 0.09 0.005 286;
+    --muted: 0.96 0.006 286;
+    --muted-foreground: 0.46 0.004 286;
+    --accent: 0.96 0.006 286;
+    --accent-foreground: 0.09 0.005 286;
+    --destructive: 0.6 0.204 27;
+    --destructive-foreground: 0.98 0 0;
+    --border: 0.9 0.005 286;
+    --input: 0.9 0.005 286;
+    --ring: 0.09 0.005 286;
+    --chart-1: 0.61 0.151 12;
+    --chart-2: 0.39 0.080 173;
+    --chart-3: 0.24 0.052 197;
+    --chart-4: 0.66 0.108 43;
+    --chart-5: 0.67 0.122 27;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 0.04 0.005 286;
+    --foreground: 0.98 0 0;
+    --card: 0.04 0.005 286;
+    --card-foreground: 0.98 0 0;
+    --popover: 0.04 0.005 286;
+    --popover-foreground: 0.98 0 0;
+    --primary: 0.98 0 0;
+    --primary-foreground: 0.09 0.005 286;
+    --secondary: 0.16 0.004 286;
+    --secondary-foreground: 0.98 0 0;
+    --muted: 0.16 0.004 286;
+    --muted-foreground: 0.65 0.004 286;
+    --accent: 0.16 0.004 286;
+    --accent-foreground: 0.98 0 0;
+    --destructive: 0.31 0.081 27;
+    --destructive-foreground: 0.98 0 0;
+    --border: 0.16 0.004 286;
+    --input: 0.16 0.004 286;
+    --ring: 0.84 0.004 286;
+    --chart-1: 0.5 0.126 220;
+    --chart-2: 0.45 0.089 160;
+    --chart-3: 0.55 0.108 30;
+    --chart-4: 0.6 0.118 280;
+    --chart-5: 0.55 0.108 340;
+  }
+}
+
+@theme {
+  --color-background: oklch(var(--background));
+  --color-foreground: oklch(var(--foreground));
+  --color-card: oklch(var(--card));
+  --color-card-foreground: oklch(var(--card-foreground));
+  --color-popover: oklch(var(--popover));
+  --color-popover-foreground: oklch(var(--popover-foreground));
+  --color-primary: oklch(var(--primary));
+  --color-primary-foreground: oklch(var(--primary-foreground));
+  --color-secondary: oklch(var(--secondary));
+  --color-secondary-foreground: oklch(var(--secondary-foreground));
+  --color-muted: oklch(var(--muted));
+  --color-muted-foreground: oklch(var(--muted-foreground));
+  --color-accent: oklch(var(--accent));
+  --color-accent-foreground: oklch(var(--accent-foreground));
+  --color-destructive: oklch(var(--destructive));
+  --color-destructive-foreground: oklch(var(--destructive-foreground));
+  --color-border: oklch(var(--border));
+  --color-input: oklch(var(--input));
+  --color-ring: oklch(var(--ring));
+  --color-chart-1: oklch(var(--chart-1));
+  --color-chart-2: oklch(var(--chart-2));
+  --color-chart-3: oklch(var(--chart-3));
+  --color-chart-4: oklch(var(--chart-4));
+  --color-chart-5: oklch(var(--chart-5));
+  --radius: var(--radius);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* 自定义磨砂玻璃效果 */
+.glass-panel {
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  background: oklch(var(--background) / 0.1);
+  border: 1px solid oklch(var(--border) / 0.2);
+  box-shadow: 0 8px 32px oklch(var(--foreground) / 0.1);
+}
+
+.glass-panel-dark {
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  background: oklch(var(--background) / 0.2);
+  border: 1px solid oklch(var(--border) / 0.1);
+  box-shadow: 0 8px 32px oklch(var(--foreground) / 0.3);
+}
+
+/* Magic UI Rainbow效果 */
+:root {
+  --color-1: oklch(var(--chart-1));
+  --color-2: oklch(var(--chart-2));
+  --color-3: oklch(var(--chart-3));
+  --color-4: oklch(var(--chart-4));
+  --color-5: oklch(var(--chart-5));
+}
+
+@keyframes rainbow {
+  0% {
+    background-position: 0%;
+  }
+  100% {
+    background-position: 200%;
+  }
+}
+
+@keyframes background-position-spin {
+  0% {
+    background-position: top center;
+  }
+  100% {
+    background-position: bottom center;
+  }
+}

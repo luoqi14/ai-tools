@@ -1,0 +1,131 @@
+@import "tailwindcss";
+@plugin "tailwindcss-animate";
+
+@theme {
+  --default-transition-duration: 150ms;
+  --default-transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  --default-font-family: var(--font-geist-sans);
+  --default-font-feature-settings: normal;
+  --default-font-variation-settings: normal;
+  --default-mono-font-family: var(--font-geist-mono);
+  --default-mono-font-feature-settings: normal;
+  --default-mono-font-variation-settings: normal;
+
+  /* shadcn/ui 主题颜色 - 使用 oklch */
+  --color-background: oklch(1 0 0);
+  --color-foreground: oklch(0.09 0.005 286);
+  --color-card: oklch(1 0 0);
+  --color-card-foreground: oklch(0.09 0.005 286);
+  --color-popover: oklch(1 0 0);
+  --color-popover-foreground: oklch(0.09 0.005 286);
+  --color-primary: oklch(0.09 0.005 286);
+  --color-primary-foreground: oklch(0.98 0 0);
+  --color-secondary: oklch(0.96 0.006 286);
+  --color-secondary-foreground: oklch(0.09 0.005 286);
+  --color-muted: oklch(0.96 0.006 286);
+  --color-muted-foreground: oklch(0.46 0.004 286);
+  --color-accent: oklch(0.96 0.006 286);
+  --color-accent-foreground: oklch(0.09 0.005 286);
+  --color-destructive: oklch(0.6 0.204 27);
+  --color-destructive-foreground: oklch(0.98 0 0);
+  --color-border: oklch(0.9 0.005 286);
+  --color-input: oklch(0.9 0.005 286);
+  --color-ring: oklch(0.09 0.005 286);
+  --color-chart-1: oklch(0.61 0.151 12);
+  --color-chart-2: oklch(0.39 0.080 173);
+  --color-chart-3: oklch(0.24 0.052 197);
+  --color-chart-4: oklch(0.66 0.108 43);
+  --color-chart-5: oklch(0.67 0.122 27);
+  --radius: 0.5rem;
+}
+
+@theme dark {
+  --color-background: oklch(0.04 0.005 286);
+  --color-foreground: oklch(0.98 0 0);
+  --color-card: oklch(0.04 0.005 286);
+  --color-card-foreground: oklch(0.98 0 0);
+  --color-popover: oklch(0.04 0.005 286);
+  --color-popover-foreground: oklch(0.98 0 0);
+  --color-primary: oklch(0.98 0 0);
+  --color-primary-foreground: oklch(0.09 0.005 286);
+  --color-secondary: oklch(0.16 0.004 286);
+  --color-secondary-foreground: oklch(0.98 0 0);
+  --color-muted: oklch(0.16 0.004 286);
+  --color-muted-foreground: oklch(0.65 0.004 286);
+  --color-accent: oklch(0.16 0.004 286);
+  --color-accent-foreground: oklch(0.98 0 0);
+  --color-destructive: oklch(0.31 0.081 27);
+  --color-destructive-foreground: oklch(0.98 0 0);
+  --color-border: oklch(0.16 0.004 286);
+  --color-input: oklch(0.16 0.004 286);
+  --color-ring: oklch(0.84 0.004 286);
+  --color-chart-1: oklch(0.5 0.126 220);
+  --color-chart-2: oklch(0.45 0.089 160);
+  --color-chart-3: oklch(0.55 0.108 30);
+  --color-chart-4: oklch(0.6 0.118 280);
+  --color-chart-5: oklch(0.55 0.108 340);
+}
+
+/* 基础样式 */
+* {
+  border-color: var(--color-border);
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  font-feature-settings: var(--default-font-feature-settings);
+  font-variation-settings: var(--default-font-variation-settings);
+}
+
+/* 自定义磨砂玻璃效果 */
+.glass-panel {
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  background: oklch(from var(--color-background) l c h / 0.1);
+  border: 1px solid oklch(from var(--color-border) l c h / 0.2);
+  box-shadow: 0 8px 32px oklch(from var(--color-foreground) l c h / 0.1);
+}
+
+.glass-panel-dark {
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  background: oklch(from var(--color-background) l c h / 0.2);
+  border: 1px solid oklch(from var(--color-border) l c h / 0.1);
+  box-shadow: 0 8px 32px oklch(from var(--color-foreground) l c h / 0.3);
+}
+
+/* Magic UI Rainbow效果 */
+:root {
+  --color-1: oklch(0.61 0.151 12);
+  --color-2: oklch(0.39 0.080 173);
+  --color-3: oklch(0.24 0.052 197);
+  --color-4: oklch(0.66 0.108 43);
+  --color-5: oklch(0.67 0.122 27);
+}
+
+.dark {
+  --color-1: oklch(0.5 0.126 220);
+  --color-2: oklch(0.45 0.089 160);
+  --color-3: oklch(0.55 0.108 30);
+  --color-4: oklch(0.6 0.118 280);
+  --color-5: oklch(0.55 0.108 340);
+}
+
+@keyframes rainbow {
+  0% {
+    background-position: 0%;
+  }
+  100% {
+    background-position: 200%;
+  }
+}
+
+@keyframes background-position-spin {
+  0% {
+    background-position: top center;
+  }
+  100% {
+    background-position: bottom center;
+  }
+}
