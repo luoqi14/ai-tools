@@ -43,11 +43,13 @@ services:
         - ai-tools-frontend:latest
       args:
         - BUILDKIT_INLINE_CACHE=1
+        - NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL:-}
     container_name: ai-tools-frontend
     ports:
       - "${FRONTEND_PORT:-3003}:3003"
     environment:
       - NODE_ENV=production
+      - NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL:-}
     restart: unless-stopped
     networks:
       - ai-tools-network

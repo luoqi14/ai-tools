@@ -1,18 +1,5 @@
-// API基础配置 - 根据环境自动选择
-const getApiBaseUrl = () => {
-  // 如果是浏览器环境且在生产模式
-  if (typeof window !== 'undefined') {
-    // 如果是生产环境（域名不是localhost），使用相对路径
-    if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-      return ''; // 使用相对路径，让nginx代理处理
-    }
-  }
-  
-  // 开发环境或服务端渲染时使用环境变量或默认值
-  return process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8003';
-};
-
-const API_BASE_URL = getApiBaseUrl();
+// API基础配置 - 通过环境变量配置
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8003';
 
 // 工具数据类型定义
 export interface Tool {
