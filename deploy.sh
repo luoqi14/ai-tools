@@ -38,7 +38,12 @@ check_docker() {
         exit 1
     fi
     
-    if ! command -v docker-compose &> /dev/null; then
+    # 检查Docker Compose（支持新旧两种格式）
+    if command -v docker-compose &> /dev/null; then
+        DOCKER_COMPOSE_CMD="docker-compose"
+    elif docker compose version &> /dev/null; then
+        DOCKER_COMPOSE_CMD="docker compose"
+    else
         log_error "Docker Compose未安装，请先安装Docker Compose"
         exit 1
     fi
@@ -47,14 +52,14 @@ check_docker() {
 # 构建镜像
 build_images() {
     log_info "开始构建Docker镜像..."
-    docker-compose build --no-cache
+    $DOCKER_COMPOSE_CMD build --no-cache
     log_success "Docker镜像构建完成"
 }
 
 # 启动服务
 start_services() {
     log_info "启动AI工具集服务..."
-    docker-compose up -d
+    $DOCKER_COMPOSE_CMD up -d
     log_success "服务启动完成"
     
     # 等待服务启动
@@ -68,14 +73,14 @@ start_services() {
 # 停止服务
 stop_services() {
     log_info "停止AI工具集服务..."
-    docker-compose down
+    $DOCKER_COMPOSE_CMD down
     log_success "服务已停止"
 }
 
 # 重启服务
 restart_services() {
     log_info "重启AI工具集服务..."
-    docker-compose restart
+    $DOCKER_COMPOSE_CMD restart
     log_success "服务已重启"
     
     # 等待服务启动
@@ -89,7 +94,7 @@ restart_services() {
 # 查看日志
 view_logs() {
     log_info "查看服务日志..."
-    docker-compose logs -f
+    $DOCKER_COMPOSE_CMD logs -f
 }
 
 # 健康检查
@@ -104,7 +109,7 @@ check_health() {
     fi
     
     # 检查前端健康状态
-    if wget -q --spider http://localhost:3003/health.html 2>/dev/null; then
+    if curl -f -s http://localhost:3003/health.html > /dev/null; then
         log_success "前端服务健康检查通过"
     else
         log_error "前端服务健康检查失败"
@@ -114,7 +119,7 @@ check_health() {
 # 显示服务状态
 show_status() {
     log_info "服务状态:"
-    docker-compose ps
+    $DOCKER_COMPOSE_CMD ps
     
     log_info "服务访问地址:"
     echo "前端: http://localhost:3003"
@@ -125,7 +130,7 @@ show_status() {
 # 清理资源
 cleanup() {
     log_info "清理Docker资源..."
-    docker-compose down -v
+    $DOCKER_COMPOSE_CMD down -v
     docker system prune -f
     log_success "资源清理完成"
 }
