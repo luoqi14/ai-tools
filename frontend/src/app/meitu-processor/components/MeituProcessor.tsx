@@ -60,6 +60,7 @@ import {
   Sliders,
 } from "lucide-react";
 import { NeonGradientCard } from "@/components/magicui/neon-gradient-card";
+import { FileUpload } from "@/components/ui/file-upload";
 
 // 预设图片数据
 const PRESET_IMAGES = [
@@ -404,7 +405,7 @@ export default function MeituProcessor() {
   const [selectedImage, setSelectedImage] = useState<string>("");
   const [customImage, setCustomImage] = useState<string>("");
   const [mode, setMode] = useState<"preset" | "custom">("preset");
-  const [presetId, setPresetId] = useState<string>("MTPLaitck9iliehdjl");
+  const [presetId, setPresetId] = useState<string>("MTyunxiu1c68684d55");
   const [functionsData, setFunctionsData] =
     useState<MeituFunctionsResponse | null>(null);
   const [peopleTypes, setPeopleTypes] = useState<PeopleType[]>([]);
@@ -418,6 +419,7 @@ export default function MeituProcessor() {
     width: number;
     height: number;
   } | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   // 模式切换的性能优化
   const [isModeTransition, startModeTransition] = useTransition();
@@ -563,6 +565,45 @@ export default function MeituProcessor() {
       setLoading(false);
     }
   }, [selectedImage, customImage, presetId, pollTaskStatus]);
+
+  const handleFileUpload = useCallback(async (files: File[]) => {
+    if (files.length === 0) return;
+
+    const file = files[0];
+
+    // 检查文件类型
+    if (!file.type.startsWith("image/")) {
+      toast.error("请选择图片文件");
+      return;
+    }
+
+    // 检查文件大小 (10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("图片文件不能超过10MB");
+      return;
+    }
+
+    setUploadingImage(true);
+
+    try {
+      const response = await api.uploadImageToTelegraph(file);
+
+      if (response.error) {
+        toast.error(response.error);
+        return;
+      }
+
+      // 上传成功，设置为自定义图片URL
+      setCustomImage(response.image_url);
+      setSelectedImage(""); // 清空预设图片选择
+      toast.success("图片上传成功！");
+    } catch (error) {
+      console.error("上传图片失败:", error);
+      toast.error("上传图片失败，请重试");
+    } finally {
+      setUploadingImage(false);
+    }
+  }, []);
 
   const handleCustomSubmit = useCallback(async () => {
     if (!selectedImage && !customImage) {
@@ -839,7 +880,7 @@ export default function MeituProcessor() {
                       <Images className="h-4 w-4" />
                     </Button>
                   </SheetTrigger>
-                  <SheetContent side="left" className="w-80">
+                  <SheetContent side="left" className="w-80 overflow-y-auto">
                     <SheetHeader>
                       <SheetTitle>选择图片</SheetTitle>
                       <SheetDescription>
@@ -900,6 +941,29 @@ export default function MeituProcessor() {
                           }}
                           className="w-full"
                         />
+                      </BlurFade>
+
+                      {/* 文件上传 */}
+                      <BlurFade
+                        delay={0.1 + PRESET_IMAGES.length * 0.05 + 0.1}
+                        inView
+                      >
+                        <div className="space-y-2">
+                          <Label className="text-sm font-medium">
+                            或上传图片文件
+                          </Label>
+                          <div className="relative">
+                            <FileUpload onChange={handleFileUpload} />
+                            {uploadingImage && (
+                              <div className="absolute inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center rounded-lg">
+                                <div className="flex items-center gap-2">
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                  <span className="text-sm">上传中...</span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       </BlurFade>
                     </div>
                   </SheetContent>
@@ -1009,9 +1073,6 @@ export default function MeituProcessor() {
                               </SelectTrigger>
                               <SelectContent>
                                 {/* 通用预设 */}
-                                <SelectItem value="MTPLaitck9iliehdjl">
-                                  通用
-                                </SelectItem>
                                 <SelectItem value="MTyunxiu1ec89c0754">
                                   婚纱
                                 </SelectItem>

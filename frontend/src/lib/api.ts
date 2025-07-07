@@ -383,5 +383,28 @@ export const api = {
       return { error: error instanceof Error ? error.message : '网络错误' };
     }
   },
+
+  // 上传图片到Telegraph图床
+  async uploadImageToTelegraph(file: File): Promise<{ image_url: string; error?: string }> {
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await fetch(`${API_BASE_URL}/api/meitu-processing/upload-image`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      const result = await response.json();
+      
+      if (!result.success) {
+        return { image_url: '', error: result.message || '图片上传失败' };
+      }
+      
+      return { image_url: result.data.image_url };
+    } catch (error) {
+      return { image_url: '', error: error instanceof Error ? error.message : '网络错误' };
+    }
+  },
 };
  

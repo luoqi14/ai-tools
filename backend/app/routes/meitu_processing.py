@@ -22,6 +22,12 @@ MEITU_API_CONFIG = {
     'query_endpoint': '/openapi/query'
 }
 
+# Telegraph图床配置
+TELEGRAPH_IMAGE_CONFIG = {
+    'upload_url': 'https://telegraph-image-92x.pages.dev/upload',
+    'base_url': 'https://telegraph-image-92x.pages.dev'
+}
+
 # 推荐的people_type配置
 PEOPLE_TYPE_CONFIG = [
     {"age": [15, 49], "gender": 1, "key": "man", "name": "男"},
@@ -746,7 +752,7 @@ def call_meitu_preset_api(image_path, preset_id):
             error_msg = result.get('message', '未知错误')
             raise Exception(f"API调用失败: {error_msg} (code: {result.get('code')})")
     else:
-        raise Exception(f"HTTP请求失败: {response.status_code} - {response.text}")
+        raise Exception(f"HTTP请求失败: {response.status_code}")
 
 def call_meitu_api(image_path, parameters):
     """
@@ -845,7 +851,7 @@ def call_meitu_api(image_path, parameters):
             error_msg = result.get('message', '未知错误')
             raise Exception(f"API调用失败: {error_msg} (code: {result.get('code')})")
     else:
-        raise Exception(f"HTTP请求失败: {response.status_code} - {response.text}")
+        raise Exception(f"HTTP请求失败: {response.status_code}")
 
 def query_meitu_task(task_id):
     """
@@ -926,4 +932,65 @@ def query_meitu_task(task_id):
             TASK_STORAGE[task_id] = task_info
             return task_info
     else:
-        raise Exception(f"HTTP请求失败: {response.status_code}") 
+        raise Exception(f"HTTP请求失败: {response.status_code}")
+
+@meitu_bp.route('/upload-image', methods=['POST'])
+def upload_image_to_telegraph():
+    """
+    上传图片到Telegraph图床
+    """
+    try:
+        # 检查是否有文件上传
+        if 'file' not in request.files:
+            return error_response('没有上传文件')
+        
+        file = request.files['file']
+        
+        # 检查文件名
+        if file.filename == '':
+            return error_response('没有选择文件')
+        
+        # 检查文件类型
+        if not allowed_file(file.filename):
+            return error_response('不支持的文件类型')
+        
+        # 准备上传到Telegraph图床
+        # 重新读取文件内容，因为stream可能已经被消耗
+        file.stream.seek(0)
+        files = {'file': (file.filename, file.stream, file.content_type)}
+        
+        # 上传到Telegraph图床
+        response = requests.post(
+            TELEGRAPH_IMAGE_CONFIG['upload_url'],
+            files=files,
+            timeout=30
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            
+            # 检查返回结果
+            if isinstance(result, list) and len(result) > 0:
+                # 获取第一个结果
+                image_info = result[0]
+                src = image_info.get('src')
+                
+                if src:
+                    # 构建完整的图片URL
+                    full_url = f"{TELEGRAPH_IMAGE_CONFIG['base_url']}{src}"
+                    
+                    return success_response({
+                        'image_url': full_url,
+                        'src': src,
+                        'original_response': result
+                    })
+                else:
+                    return error_response('图片上传失败：返回结果中没有src字段')
+            else:
+                return error_response('图片上传失败：返回结果格式不正确')
+        else:
+            return error_response(f'图片上传失败：HTTP {response.status_code}')
+            
+    except Exception as e:
+        print(f"上传图片到Telegraph失败: {str(e)}")
+        return error_response(f'上传失败: {str(e)}') 
