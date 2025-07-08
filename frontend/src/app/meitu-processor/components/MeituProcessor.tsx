@@ -60,7 +60,7 @@ import {
   Sliders,
 } from "lucide-react";
 import { NeonGradientCard } from "@/components/magicui/neon-gradient-card";
-import { FileUpload } from "@/components/ui/file-upload";
+import { ImagePicker } from "@/components/ui/image-picker";
 
 // 预设图片数据
 const PRESET_IMAGES = [
@@ -566,11 +566,7 @@ export default function MeituProcessor() {
     }
   }, [selectedImage, customImage, presetId, pollTaskStatus]);
 
-  const handleFileUpload = useCallback(async (files: File[]) => {
-    if (files.length === 0) return;
-
-    const file = files[0];
-
+  const handleImageSelect = useCallback(async (file: File) => {
     // 检查文件类型
     if (!file.type.startsWith("image/")) {
       toast.error("请选择图片文件");
@@ -857,7 +853,7 @@ export default function MeituProcessor() {
             )}
 
             {/* 浮动操作按钮 */}
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex flex-col items-center gap-4 z-1000">
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex flex-col items-center gap-4 z-20">
               {/* 下载按钮 */}
               {result && (
                 <RainbowButton
@@ -943,26 +939,37 @@ export default function MeituProcessor() {
                         />
                       </BlurFade>
 
-                      {/* 文件上传 */}
+                      {/* 图片选择 */}
                       <BlurFade
                         delay={0.1 + PRESET_IMAGES.length * 0.05 + 0.1}
                         inView
                       >
                         <div className="space-y-2">
                           <Label className="text-sm font-medium">
-                            或上传图片文件
+                            或拍照/上传图片
                           </Label>
-                          <div className="relative">
-                            <FileUpload onChange={handleFileUpload} />
-                            {uploadingImage && (
-                              <div className="absolute inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center rounded-lg">
-                                <div className="flex items-center gap-2">
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                  <span className="text-sm">上传中...</span>
-                                </div>
-                              </div>
-                            )}
-                          </div>
+                          <ImagePicker
+                            onImageSelect={handleImageSelect}
+                            trigger={
+                              <Button
+                                variant="outline"
+                                className="w-full h-12 flex items-center gap-2"
+                                disabled={uploadingImage}
+                              >
+                                {uploadingImage ? (
+                                  <>
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                    <span>上传中...</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Images className="h-4 w-4" />
+                                    <span>选择图片</span>
+                                  </>
+                                )}
+                              </Button>
+                            }
+                          />
                         </div>
                       </BlurFade>
                     </div>
