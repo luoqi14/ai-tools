@@ -11,6 +11,7 @@ import {
   Loader2,
   RefreshCw,
   FlipHorizontal,
+  Circle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -82,32 +83,45 @@ export function CameraCapture({
         throw new Error("您的浏览器不支持摄像头功能");
       }
 
-      // 优化的摄像头约束 - 提高分辨率和质量
+      // 针对后置摄像头的特殊优化约束
+      const isBackCamera = facingMode === "environment";
+
       const baseConstraints = {
         video: {
           facingMode: { ideal: facingMode },
-          // 提高分辨率设置，支持4K
-          width: { ideal: 1920, max: 3840, min: 640 },
-          height: { ideal: 1080, max: 2160, min: 480 },
-          frameRate: { ideal: 30, max: 60 },
-          // 添加更多质量设置
+          // 后置摄像头使用更高的分辨率和质量设置
+          width: isBackCamera
+            ? { ideal: 1920, max: 4096, min: 1280 }
+            : { ideal: 1280, max: 1920, min: 640 },
+          height: isBackCamera
+            ? { ideal: 1080, max: 3072, min: 720 }
+            : { ideal: 720, max: 1080, min: 480 },
+          frameRate: { ideal: 30, max: 30 },
           aspectRatio: { ideal: 16 / 9 },
+          // 添加自动对焦和质量设置
+          ...(isBackCamera && {
+            focusMode: { ideal: "continuous" },
+            exposureMode: { ideal: "continuous" },
+            whiteBalanceMode: { ideal: "continuous" },
+          }),
         },
         audio: false,
       };
 
-      // 移动端特殊优化
-      if (deviceInfo.isMobile) {
+      // 移动端进一步优化
+      if (deviceInfo.isMobile && isBackCamera) {
         baseConstraints.video = {
           ...baseConstraints.video,
-          // 移动端优先高分辨率
-          width: { ideal: 1920, max: 4096, min: 720 },
-          height: { ideal: 1080, max: 3072, min: 540 },
-          frameRate: { ideal: 30, max: 30 }, // 移动端稳定帧率
+          // 后置摄像头高分辨率
+          width: { ideal: 1920, max: 4096, min: 1280 },
+          height: { ideal: 1080, max: 3072, min: 720 },
         };
       }
 
-      console.log("请求摄像头权限...", baseConstraints);
+      console.log(
+        `启动${isBackCamera ? "后置" : "前置"}摄像头，约束:`,
+        baseConstraints
+      );
       const stream = await navigator.mediaDevices.getUserMedia(baseConstraints);
       streamRef.current = stream;
 
@@ -125,7 +139,7 @@ export function CameraCapture({
           const timeout = setTimeout(
             () => reject(new Error("视频加载超时")),
             15000
-          ); // 增加超时时间
+          );
 
           const onLoadedMetadata = () => {
             clearTimeout(timeout);
@@ -133,10 +147,11 @@ export function CameraCapture({
             video.removeEventListener("error", onError);
 
             // 输出视频实际分辨率
-            console.log("摄像头实际分辨率:", {
+            console.log(`${isBackCamera ? "后置" : "前置"}摄像头实际分辨率:`, {
               width: video.videoWidth,
               height: video.videoHeight,
               facingMode: facingMode,
+              aspectRatio: (video.videoWidth / video.videoHeight).toFixed(2),
             });
 
             resolve();
@@ -157,7 +172,7 @@ export function CameraCapture({
         });
 
         setIsStreaming(true);
-        console.log("摄像头启动成功");
+        console.log(`${isBackCamera ? "后置" : "前置"}摄像头启动成功`);
       }
     } catch (err) {
       console.error("启动摄像头失败:", err);
@@ -171,7 +186,9 @@ export function CameraCapture({
         } else if (err.name === "NotReadableError") {
           errorMessage = "摄像头正在被其他应用使用";
         } else if (err.name === "OverconstrainedError") {
-          errorMessage = "摄像头不支持请求的配置，尝试切换摄像头";
+          errorMessage = `摄像头不支持请求的配置，尝试切换到${
+            facingMode === "environment" ? "前置" : "后置"
+          }摄像头`;
         } else {
           errorMessage = err.message;
         }
@@ -205,49 +222,72 @@ export function CameraCapture({
     const videoWidth = video.videoWidth;
     const videoHeight = video.videoHeight;
 
-    console.log("拍照时视频尺寸:", { videoWidth, videoHeight });
+    console.log(
+      `拍照 - ${facingMode === "environment" ? "后置" : "前置"}摄像头尺寸:`,
+      {
+        videoWidth,
+        videoHeight,
+        aspectRatio: (videoWidth / videoHeight).toFixed(2),
+      }
+    );
 
     // 设置canvas为视频的实际尺寸，确保高清晰度
     canvas.width = videoWidth;
     canvas.height = videoHeight;
 
-    // 设置高质量渲染
+    // 设置最高质量渲染
     context.imageSmoothingEnabled = true;
     context.imageSmoothingQuality = "high";
+
+    // 针对后置摄像头的特殊处理
+    if (facingMode === "environment") {
+      // 后置摄像头使用更精细的渲染
+      context.filter = "contrast(1.1) brightness(1.05)"; // 轻微增强对比度和亮度
+    }
 
     // 绘制当前视频帧到canvas
     context.drawImage(video, 0, 0, videoWidth, videoHeight);
 
-    // 转换为高质量图片数据URL
-    const imageDataUrl = canvas.toDataURL("image/jpeg", 0.95); // 提高质量到0.95
+    // 转换为超高质量图片数据URL
+    const imageDataUrl = canvas.toDataURL("image/jpeg", 0.98); // 提高到98%质量
     setCapturedImage(imageDataUrl);
 
     // 停止摄像头
     stopCamera();
-  }, [stopCamera]);
+  }, [stopCamera, facingMode]);
 
   const confirmCapture = useCallback(() => {
     if (!capturedImage || !canvasRef.current) return;
 
-    // 将canvas转换为高质量Blob，然后转换为File
+    // 将canvas转换为超高质量Blob，然后转换为File
     canvasRef.current.toBlob(
       (blob) => {
         if (blob) {
-          const file = new File([blob], `photo-${Date.now()}.jpg`, {
-            type: "image/jpeg",
-            lastModified: Date.now(),
-          });
+          const file = new File(
+            [blob],
+            `photo-${facingMode}-${Date.now()}.jpg`,
+            {
+              type: "image/jpeg",
+              lastModified: Date.now(),
+            }
+          );
           console.log(
-            "生成的图片文件大小:",
-            (blob.size / 1024 / 1024).toFixed(2) + "MB"
+            `生成的${
+              facingMode === "environment" ? "后置" : "前置"
+            }摄像头图片:`,
+            {
+              size: (blob.size / 1024 / 1024).toFixed(2) + "MB",
+              type: file.type,
+              name: file.name,
+            }
           );
           onCapture(file);
         }
       },
       "image/jpeg",
-      0.95 // 提高图片质量到0.95
+      0.98 // 提高图片质量到98%
     );
-  }, [capturedImage, onCapture]);
+  }, [capturedImage, onCapture, facingMode]);
 
   const retakePhoto = useCallback(() => {
     setCapturedImage(null);
@@ -344,6 +384,19 @@ export function CameraCapture({
                 </div>
               </div>
             )}
+
+            {/* 大的中央拍照按钮 - 类似手机相机应用 */}
+            {isStreaming && !capturedImage && (
+              <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2">
+                <Button
+                  onClick={capturePhoto}
+                  size="icon"
+                  className="h-16 w-16 rounded-full bg-white/90 hover:bg-white border-4 border-white/50 shadow-lg"
+                >
+                  <Circle className="h-8 w-8 text-gray-800 fill-current" />
+                </Button>
+              </div>
+            )}
           </>
         )}
 
@@ -385,7 +438,7 @@ export function CameraCapture({
 
         {/* 当前摄像头模式指示器 */}
         {isStreaming && !capturedImage && (
-          <div className="absolute top-3 left-3 bg-black/50 text-white px-2 py-1 rounded-lg text-xs">
+          <div className="absolute top-3 left-3 bg-black/70 text-white px-3 py-1 rounded-lg text-sm font-medium">
             {facingMode === "user" ? "前置" : "后置"}
           </div>
         )}
@@ -417,18 +470,16 @@ export function CameraCapture({
         {isStreaming && !capturedImage && (
           <>
             {/* 摄像头切换按钮 - 底部额外按钮 */}
-            {deviceInfo.isMobile && (
-              <Button
-                variant="outline"
-                onClick={switchCamera}
-                size="lg"
-                className="flex items-center gap-2 min-w-[80px]"
-                title="切换摄像头"
-              >
-                <FlipHorizontal className="h-5 w-5" />
-                切换
-              </Button>
-            )}
+            <Button
+              variant="outline"
+              onClick={switchCamera}
+              size="lg"
+              className="flex items-center gap-2 min-w-[80px]"
+              title="切换摄像头"
+            >
+              <FlipHorizontal className="h-5 w-5" />
+              切换
+            </Button>
             <Button
               variant="outline"
               onClick={stopCamera}
@@ -483,6 +534,14 @@ export function CameraCapture({
           </Button>
         )}
       </div>
+
+      {/* 使用提示 */}
+      {isStreaming && !capturedImage && (
+        <div className="text-center text-sm text-muted-foreground">
+          <p>点击预览区域底部的⚪按钮拍照</p>
+          <p>或使用下方的&ldquo;拍照&rdquo;按钮</p>
+        </div>
+      )}
     </div>
   );
 }
