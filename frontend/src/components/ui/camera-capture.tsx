@@ -10,6 +10,7 @@ import {
   X,
   Loader2,
   RefreshCw,
+  FlipHorizontal,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -38,7 +39,8 @@ export function CameraCapture({
   const [deviceInfo, setDeviceInfo] = useState<{
     isMobile: boolean;
     hasMultipleCameras: boolean;
-  }>({ isMobile: false, hasMultipleCameras: false });
+    videoDevices: MediaDeviceInfo[];
+  }>({ isMobile: false, hasMultipleCameras: false, videoDevices: [] });
 
   // 检测设备信息
   useEffect(() => {
@@ -49,17 +51,17 @@ export function CameraCapture({
         );
 
       let hasMultipleCameras = false;
+      let videoDevices: MediaDeviceInfo[] = [];
       try {
         const devices = await navigator.mediaDevices.enumerateDevices();
-        const videoDevices = devices.filter(
-          (device) => device.kind === "videoinput"
-        );
+        videoDevices = devices.filter((device) => device.kind === "videoinput");
         hasMultipleCameras = videoDevices.length > 1;
+        console.log("检测到的摄像头设备:", videoDevices);
       } catch (err) {
         console.log("无法枚举设备:", err);
       }
 
-      setDeviceInfo({ isMobile, hasMultipleCameras });
+      setDeviceInfo({ isMobile, hasMultipleCameras, videoDevices });
     };
 
     checkDevice();
@@ -80,28 +82,33 @@ export function CameraCapture({
         throw new Error("您的浏览器不支持摄像头功能");
       }
 
-      // 移动端优化的约束
-      const constraints = deviceInfo.isMobile
-        ? {
-            video: {
-              facingMode: { ideal: facingMode },
-              width: { ideal: 1920, max: 1920, min: 640 },
-              height: { ideal: 1080, max: 1080, min: 480 },
-              frameRate: { ideal: 30, max: 30 },
-            },
-            audio: false,
-          }
-        : {
-            video: {
-              facingMode: facingMode,
-              width: { ideal: 1280, min: 640 },
-              height: { ideal: 720, min: 480 },
-            },
-            audio: false,
-          };
+      // 优化的摄像头约束 - 提高分辨率和质量
+      const baseConstraints = {
+        video: {
+          facingMode: { ideal: facingMode },
+          // 提高分辨率设置，支持4K
+          width: { ideal: 1920, max: 3840, min: 640 },
+          height: { ideal: 1080, max: 2160, min: 480 },
+          frameRate: { ideal: 30, max: 60 },
+          // 添加更多质量设置
+          aspectRatio: { ideal: 16 / 9 },
+        },
+        audio: false,
+      };
 
-      console.log("请求摄像头权限...", constraints);
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      // 移动端特殊优化
+      if (deviceInfo.isMobile) {
+        baseConstraints.video = {
+          ...baseConstraints.video,
+          // 移动端优先高分辨率
+          width: { ideal: 1920, max: 4096, min: 720 },
+          height: { ideal: 1080, max: 3072, min: 540 },
+          frameRate: { ideal: 30, max: 30 }, // 移动端稳定帧率
+        };
+      }
+
+      console.log("请求摄像头权限...", baseConstraints);
+      const stream = await navigator.mediaDevices.getUserMedia(baseConstraints);
       streamRef.current = stream;
 
       if (videoRef.current) {
@@ -117,13 +124,21 @@ export function CameraCapture({
           const video = videoRef.current!;
           const timeout = setTimeout(
             () => reject(new Error("视频加载超时")),
-            10000
-          );
+            15000
+          ); // 增加超时时间
 
           const onLoadedMetadata = () => {
             clearTimeout(timeout);
             video.removeEventListener("loadedmetadata", onLoadedMetadata);
             video.removeEventListener("error", onError);
+
+            // 输出视频实际分辨率
+            console.log("摄像头实际分辨率:", {
+              width: video.videoWidth,
+              height: video.videoHeight,
+              facingMode: facingMode,
+            });
+
             resolve();
           };
 
@@ -186,15 +201,25 @@ export function CameraCapture({
 
     if (!context) return;
 
-    // 设置canvas尺寸为视频尺寸
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+    // 获取视频的实际尺寸
+    const videoWidth = video.videoWidth;
+    const videoHeight = video.videoHeight;
+
+    console.log("拍照时视频尺寸:", { videoWidth, videoHeight });
+
+    // 设置canvas为视频的实际尺寸，确保高清晰度
+    canvas.width = videoWidth;
+    canvas.height = videoHeight;
+
+    // 设置高质量渲染
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
 
     // 绘制当前视频帧到canvas
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    context.drawImage(video, 0, 0, videoWidth, videoHeight);
 
-    // 转换为图片数据URL，提高质量
-    const imageDataUrl = canvas.toDataURL("image/jpeg", 0.9);
+    // 转换为高质量图片数据URL
+    const imageDataUrl = canvas.toDataURL("image/jpeg", 0.95); // 提高质量到0.95
     setCapturedImage(imageDataUrl);
 
     // 停止摄像头
@@ -204,7 +229,7 @@ export function CameraCapture({
   const confirmCapture = useCallback(() => {
     if (!capturedImage || !canvasRef.current) return;
 
-    // 将canvas转换为Blob，然后转换为File
+    // 将canvas转换为高质量Blob，然后转换为File
     canvasRef.current.toBlob(
       (blob) => {
         if (blob) {
@@ -212,11 +237,15 @@ export function CameraCapture({
             type: "image/jpeg",
             lastModified: Date.now(),
           });
+          console.log(
+            "生成的图片文件大小:",
+            (blob.size / 1024 / 1024).toFixed(2) + "MB"
+          );
           onCapture(file);
         }
       },
       "image/jpeg",
-      0.9 // 提高图片质量
+      0.95 // 提高图片质量到0.95
     );
   }, [capturedImage, onCapture]);
 
@@ -321,16 +350,44 @@ export function CameraCapture({
         {/* 隐藏的canvas用于捕获图片 */}
         <canvas ref={canvasRef} className="hidden" />
 
-        {/* 摄像头切换按钮 */}
-        {isStreaming && !capturedImage && deviceInfo.hasMultipleCameras && (
+        {/* 前后摄像头切换按钮 - 移动端总是显示 */}
+        {isStreaming && !capturedImage && deviceInfo.isMobile && (
           <Button
             size="icon"
             variant="outline"
-            className="absolute top-3 right-3 bg-background/80 backdrop-blur-sm h-10 w-10"
+            className="absolute top-3 right-3 bg-background/90 backdrop-blur-sm h-12 w-12 border-2"
             onClick={switchCamera}
+            title={
+              facingMode === "user" ? "切换到后置摄像头" : "切换到前置摄像头"
+            }
           >
-            <RotateCcw className="h-5 w-5" />
+            <FlipHorizontal className="h-6 w-6" />
           </Button>
+        )}
+
+        {/* 桌面端的摄像头切换按钮 */}
+        {isStreaming &&
+          !capturedImage &&
+          !deviceInfo.isMobile &&
+          deviceInfo.hasMultipleCameras && (
+            <Button
+              size="icon"
+              variant="outline"
+              className="absolute top-3 right-3 bg-background/80 backdrop-blur-sm h-10 w-10"
+              onClick={switchCamera}
+              title={
+                facingMode === "user" ? "切换到后置摄像头" : "切换到前置摄像头"
+              }
+            >
+              <RotateCcw className="h-5 w-5" />
+            </Button>
+          )}
+
+        {/* 当前摄像头模式指示器 */}
+        {isStreaming && !capturedImage && (
+          <div className="absolute top-3 left-3 bg-black/50 text-white px-2 py-1 rounded-lg text-xs">
+            {facingMode === "user" ? "前置" : "后置"}
+          </div>
         )}
       </div>
 
@@ -359,6 +416,19 @@ export function CameraCapture({
 
         {isStreaming && !capturedImage && (
           <>
+            {/* 摄像头切换按钮 - 底部额外按钮 */}
+            {deviceInfo.isMobile && (
+              <Button
+                variant="outline"
+                onClick={switchCamera}
+                size="lg"
+                className="flex items-center gap-2 min-w-[80px]"
+                title="切换摄像头"
+              >
+                <FlipHorizontal className="h-5 w-5" />
+                切换
+              </Button>
+            )}
             <Button
               variant="outline"
               onClick={stopCamera}
