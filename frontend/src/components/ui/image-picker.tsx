@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   Drawer,
   DrawerClose,
@@ -14,7 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { FileUpload } from "@/components/ui/file-upload";
 import { CameraCapture } from "@/components/ui/camera-capture";
-import { Camera, FolderOpen, X, Smartphone } from "lucide-react";
+import { Camera, FolderOpen, X } from "lucide-react";
 
 interface ImagePickerProps {
   onImageSelect: (file: File) => void;
@@ -26,21 +26,6 @@ type PickerMode = "menu" | "camera" | "gallery";
 export function ImagePicker({ onImageSelect, trigger }: ImagePickerProps) {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<PickerMode>("menu");
-  const [isMobile, setIsMobile] = useState(false);
-
-  // 检测是否为移动设备
-  useEffect(() => {
-    const checkMobile = () => {
-      const userAgent = navigator.userAgent;
-      const mobileCheck =
-        /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-          userAgent
-        );
-      setIsMobile(mobileCheck);
-    };
-
-    checkMobile();
-  }, []);
 
   const handleImageCapture = (file: File) => {
     onImageSelect(file);
@@ -88,21 +73,19 @@ export function ImagePicker({ onImageSelect, trigger }: ImagePickerProps) {
           <div className="p-4 pb-0">
             {mode === "menu" && (
               <div className="space-y-4">
-                {/* 拍照按钮 - 移动端优先显示 */}
+                {/* 拍照按钮 */}
                 <Button
                   className="w-full flex items-center justify-center gap-3 h-14 text-base font-medium bg-blue-600 hover:bg-blue-700"
                   onClick={() => setMode("camera")}
                 >
                   <Camera className="h-6 w-6" />
-                  <div className="flex flex-col items-start">
-                    <span>拍照</span>
-                  </div>
+                  <span>拍照</span>
                 </Button>
 
                 {/* 相册选择按钮 */}
                 <Button
                   variant="outline"
-                  className="w-full flex items-center justify-center gap-3 h-14 text-base font-medium border-1"
+                  className="w-full flex items-center justify-center gap-3 h-14 text-base font-medium"
                   onClick={() => setMode("gallery")}
                 >
                   <FolderOpen className="h-6 w-6" />
