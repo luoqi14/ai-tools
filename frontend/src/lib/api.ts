@@ -1,5 +1,5 @@
 // API基础配置 - 通过环境变量配置
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8003';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://192.168.100.123:8003';
 
 // 工具数据类型定义
 export interface Tool {
@@ -404,6 +404,30 @@ export const api = {
       return { image_url: result.data.image_url };
     } catch (error) {
       return { image_url: '', error: error instanceof Error ? error.message : '网络错误' };
+    }
+  },
+
+  // 直接处理图片，跳过Telegraph图床
+  async processMeituImageDirect(imageFile: File, presetId: string = 'MTyunxiu1c68684d55'): Promise<{ task_id: string; error?: string }> {
+    try {
+      const formData = new FormData();
+      formData.append("image", imageFile);
+      formData.append("preset_id", presetId);
+
+      const response = await fetch(`${API_BASE_URL}/api/meitu-processing/process-direct`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      const result = await response.json();
+      
+      if (!result.success) {
+        return { task_id: '', error: result.message || '直接处理失败' };
+      }
+      
+      return result.data;
+    } catch (error) {
+      return { task_id: '', error: error instanceof Error ? error.message : '网络错误' };
     }
   },
 };

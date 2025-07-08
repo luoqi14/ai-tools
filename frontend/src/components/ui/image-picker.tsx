@@ -45,12 +45,26 @@ export function ImagePicker({ onImageSelect, trigger }: ImagePickerProps) {
     setMode("menu");
   };
 
+  const handleCameraCancel = () => {
+    setMode("menu");
+  };
+
   const handleClose = (isOpen: boolean) => {
     setOpen(isOpen);
     if (!isOpen) {
       setMode("menu");
     }
   };
+
+  // 拍照模式直接渲染全屏组件
+  if (mode === "camera") {
+    return (
+      <CameraCapture
+        onCapture={handleImageCapture}
+        onCancel={handleCameraCancel}
+      />
+    );
+  }
 
   return (
     <Drawer open={open} onOpenChange={handleClose}>
@@ -60,12 +74,10 @@ export function ImagePicker({ onImageSelect, trigger }: ImagePickerProps) {
           <DrawerHeader className="pb-4">
             <DrawerTitle className="text-lg font-semibold">
               {mode === "menu" && "选择图片"}
-              {mode === "camera" && "拍照"}
               {mode === "gallery" && "从相册选择"}
             </DrawerTitle>
             <DrawerDescription className="text-sm text-muted-foreground">
               {mode === "menu" && "请选择获取图片的方式"}
-              {mode === "camera" && "使用摄像头拍摄照片"}
               {mode === "gallery" && "从设备相册中选择图片"}
             </DrawerDescription>
           </DrawerHeader>
@@ -91,15 +103,6 @@ export function ImagePicker({ onImageSelect, trigger }: ImagePickerProps) {
                   <FolderOpen className="h-6 w-6" />
                   <span>从相册选择</span>
                 </Button>
-              </div>
-            )}
-
-            {mode === "camera" && (
-              <div className="space-y-4">
-                <CameraCapture
-                  onCapture={handleImageCapture}
-                  onCancel={handleCancel}
-                />
               </div>
             )}
 

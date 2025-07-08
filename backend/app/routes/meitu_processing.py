@@ -69,13 +69,26 @@ def generate_signature(params, secret_id):
 
 def upload_image_to_base64(image_path):
     """
-    将图片转换为base64编码
+    将图片转换为base64编码，根据文件扩展名设置正确的MIME类型
     """
     try:
         with open(image_path, 'rb') as image_file:
             image_data = image_file.read()
             base64_data = base64.b64encode(image_data).decode('utf-8')
-            return f"data:image/jpeg;base64,{base64_data}"
+            
+            # 根据文件扩展名确定MIME类型
+            file_extension = image_path.lower().split('.')[-1]
+            mime_type_map = {
+                'jpg': 'image/jpeg',
+                'jpeg': 'image/jpeg', 
+                'png': 'image/png',
+                'gif': 'image/gif',
+                'bmp': 'image/bmp',
+                'webp': 'image/webp'
+            }
+            
+            mime_type = mime_type_map.get(file_extension, 'image/jpeg')
+            return f"data:{mime_type};base64,{base64_data}"
     except Exception as e:
         print(f"图片转换失败: {e}")
         return None
@@ -954,10 +967,31 @@ def upload_image_to_telegraph():
         if not allowed_file(file.filename):
             return error_response('不支持的文件类型')
         
-        # 准备上传到Telegraph图床
-        # 重新读取文件内容，因为stream可能已经被消耗
+        # 调试：保存原始文件到本地进行对比
         file.stream.seek(0)
+        original_data = file.stream.read()
+        
+        # 创建调试目录
+        debug_dir = os.path.join(os.getcwd(), 'debug_images')
+        if not os.path.exists(debug_dir):
+            os.makedirs(debug_dir)
+        
+        # 保存原始文件
+        timestamp = int(time.time())
+        original_filename = f"original_{timestamp}_{file.filename}"
+        original_path = os.path.join(debug_dir, original_filename)
+        
+        with open(original_path, 'wb') as f:
+            f.write(original_data)
+        
+        print(f"调试：保存原始文件到 {original_path}")
+        print(f"原始文件信息：大小={len(original_data)} bytes, 类型={file.content_type}")
+        
+        # 准备上传到Telegraph图床
+        file.stream.seek(0)  # 重置流位置
         files = {'file': (file.filename, file.stream, file.content_type)}
+        
+        print(f"上传到Telegraph图床: {TELEGRAPH_IMAGE_CONFIG['upload_url']}")
         
         # 上传到Telegraph图床
         response = requests.post(
@@ -965,6 +999,9 @@ def upload_image_to_telegraph():
             files=files,
             timeout=30
         )
+        
+        print(f"Telegraph响应状态码: {response.status_code}")
+        print(f"Telegraph响应内容: {response.text}")
         
         if response.status_code == 200:
             result = response.json()
@@ -979,10 +1016,33 @@ def upload_image_to_telegraph():
                     # 构建完整的图片URL
                     full_url = f"{TELEGRAPH_IMAGE_CONFIG['base_url']}{src}"
                     
+                    # 调试：下载Telegraph处理后的图片进行对比
+                    try:
+                        telegraph_response = requests.get(full_url, timeout=10)
+                        if telegraph_response.status_code == 200:
+                            telegraph_filename = f"telegraph_{timestamp}_{file.filename}"
+                            telegraph_path = os.path.join(debug_dir, telegraph_filename)
+                            
+                            with open(telegraph_path, 'wb') as f:
+                                f.write(telegraph_response.content)
+                            
+                            print(f"调试：保存Telegraph处理后的文件到 {telegraph_path}")
+                            print(f"Telegraph文件信息：大小={len(telegraph_response.content)} bytes")
+                            print(f"文件大小变化：{len(original_data)} -> {len(telegraph_response.content)} ({((len(telegraph_response.content) - len(original_data)) / len(original_data) * 100):.1f}%)")
+                        else:
+                            print(f"无法下载Telegraph图片进行对比: HTTP {telegraph_response.status_code}")
+                    except Exception as e:
+                        print(f"下载Telegraph图片失败: {e}")
+                    
                     return success_response({
                         'image_url': full_url,
                         'src': src,
-                        'original_response': result
+                        'original_response': result,
+                        'debug_info': {
+                            'original_size': len(original_data),
+                            'original_path': original_path,
+                            'telegraph_url': full_url
+                        }
                     })
                 else:
                     return error_response('图片上传失败：返回结果中没有src字段')
@@ -994,3 +1054,45 @@ def upload_image_to_telegraph():
     except Exception as e:
         print(f"上传图片到Telegraph失败: {str(e)}")
         return error_response(f'上传失败: {str(e)}') 
+
+@meitu_bp.route('/process-direct', methods=['POST'])
+def process_image_direct():
+    """
+    直接处理上传的图片，跳过Telegraph图床，避免第三方服务的色彩问题
+    """
+    try:
+        # 检查是否有文件上传
+        if 'image' not in request.files:
+            return error_response('没有上传图片文件')
+        
+        image_file = request.files['image']
+        if image_file.filename == '':
+            return error_response('没有选择图片文件')
+        
+        if not allowed_file(image_file.filename):
+            return error_response('不支持的文件格式')
+        
+        # 获取预设ID，默认使用基础美化预设
+        preset_id = request.form.get('preset_id', 'MTyunxiu1c68684d55')
+        
+        print(f"直接处理图片：{image_file.filename}, 预设ID: {preset_id}")
+        
+        # 保存上传的图片到临时文件
+        image_path = save_uploaded_file(image_file)
+        if not image_path:
+            return error_response('图片保存失败')
+        
+        print(f"图片保存到：{image_path}")
+        
+        # 直接调用美图API处理，使用base64方式
+        task_id = call_meitu_preset_api(image_path, preset_id)
+        
+        if task_id:
+            return success_response({'task_id': task_id})
+        else:
+            return error_response('图片处理失败')
+    
+    except Exception as e:
+        error_msg = str(e)
+        print(f"直接处理图片失败: {error_msg}")
+        return error_response(error_msg)

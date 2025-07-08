@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3003",
+    "dev-https": "HTTPS=true SSL_CRT=../192.168.100.123+2.pem SSL_KEY=../192.168.100.123+2-key.pem next dev -p 3003 -H 0.0.0.0",
+    "dev-custom-https": "NEXT_PUBLIC_API_BASE_URL=https://192.168.100.123:8003 node server.js",
     "build": "next build",
     "start": "next start -p 3003",
     "export": "next build",

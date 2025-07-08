@@ -39,6 +39,7 @@ import {
 } from "@/components/ui/sheet";
 import { Compare } from "@/components/ui/compare";
 import { BlurFade } from "@/components/magicui/blur-fade";
+
 import { BorderBeam } from "@/components/magicui/border-beam";
 import { RainbowButton } from "@/components/magicui/rainbow-button";
 import { ShinyButton } from "@/components/magicui/shiny-button";
@@ -86,18 +87,13 @@ const PRESET_IMAGES = [
   },
   {
     id: 5,
-    url: "https://jwsmed-test.oss-cn-hangzhou.aliyuncs.com/res/resource/manager/resource/bbe711ace60347a1ae6a7673f3682a26.jpeg",
+    url: "https://jwsmed-test.oss-cn-hangzhou.aliyuncs.com/res/resource/manager/resource/93345342c2ba4e949cfa8af898451923.jpeg",
     name: "示例图片 5",
   },
   {
     id: 6,
-    url: "https://jwsmed-test.oss-cn-hangzhou.aliyuncs.com/res/resource/manager/resource/93345342c2ba4e949cfa8af898451923.jpeg",
-    name: "示例图片 6",
-  },
-  {
-    id: 7,
     url: "https://jwsmed-test.oss-cn-hangzhou.aliyuncs.com/res/resource/manager/resource/4a368b891dc14d5fbb3209944c053891.jpg",
-    name: "示例图片 7",
+    name: "示例图片 6",
   },
 ];
 
@@ -402,15 +398,16 @@ const ParameterControl = memo(
 ParameterControl.displayName = "ParameterControl";
 
 export default function MeituProcessor() {
-  const [selectedImage, setSelectedImage] = useState<string>("");
-  const [customImage, setCustomImage] = useState<string>("");
+  const [selectedImage, setSelectedImage] = useState("");
+  const [customImage, setCustomImage] = useState("");
+
   const [mode, setMode] = useState<"preset" | "custom">("preset");
-  const [presetId, setPresetId] = useState<string>("MTyunxiu1c68684d55");
+  const [presetId, setPresetId] = useState("MTyunxiu1c68684d55");
   const [functionsData, setFunctionsData] =
     useState<MeituFunctionsResponse | null>(null);
   const [peopleTypes, setPeopleTypes] = useState<PeopleType[]>([]);
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<string>("");
+  const [result, setResult] = useState("");
   const [isPolling, setIsPolling] = useState(false);
   const [pollingProgress, setPollingProgress] = useState(0);
   const [imageDrawerOpen, setImageDrawerOpen] = useState(false);
@@ -582,6 +579,17 @@ export default function MeituProcessor() {
     setUploadingImage(true);
 
     try {
+      // 清理之前的状态
+      setResult("");
+
+      // 创建本地预览URL
+      const localPreviewUrl = URL.createObjectURL(file);
+
+      // 先设置本地预览，让用户立即看到图片
+      setCustomImage(localPreviewUrl);
+      setSelectedImage(""); // 清空预设图片选择
+
+      // 上传到Telegraph图床获取URL（美图API需要）
       const response = await api.uploadImageToTelegraph(file);
 
       if (response.error) {
@@ -589,9 +597,11 @@ export default function MeituProcessor() {
         return;
       }
 
-      // 上传成功，设置为自定义图片URL
+      // 上传成功，更新为图床URL（用于美图API调用）
       setCustomImage(response.image_url);
-      setSelectedImage(""); // 清空预设图片选择
+
+      console.log("本地预览URL:", localPreviewUrl);
+      console.log("图床URL（用于API）:", response.image_url);
       toast.success("图片上传成功！");
     } catch (error) {
       console.error("上传图片失败:", error);
@@ -610,6 +620,7 @@ export default function MeituProcessor() {
     setLoading(true);
     setResult("");
     try {
+      // 统一使用URL处理API（因为所有图片都已经上传到图床获取了URL）
       const response = await api.processMeituImageWithUrl({
         imageUrl: customImage || selectedImage,
         ...parameters,
@@ -876,7 +887,11 @@ export default function MeituProcessor() {
                       <Images className="h-4 w-4" />
                     </Button>
                   </SheetTrigger>
-                  <SheetContent side="left" className="w-80 overflow-y-auto">
+                  <SheetContent
+                    side="left"
+                    className="w-80 overflow-y-auto"
+                    onOpenAutoFocus={(e) => e.preventDefault()}
+                  >
                     <SheetHeader>
                       <SheetTitle>选择图片</SheetTitle>
                       <SheetDescription>
@@ -885,7 +900,7 @@ export default function MeituProcessor() {
                     </SheetHeader>
                     <div className="space-y-4 mt-6">
                       {/* 图片墙 */}
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-3 gap-3">
                         {PRESET_IMAGES.map((image, index) => (
                           <BlurFade
                             key={image.id}
@@ -920,58 +935,46 @@ export default function MeituProcessor() {
                         ))}
                       </div>
 
-                      {/* 自定义URL */}
-                      <BlurFade
-                        delay={0.1 + PRESET_IMAGES.length * 0.05}
-                        inView
-                      >
-                        <Input
-                          type="url"
-                          placeholder="输入自定义图片URL..."
-                          value={customImage}
-                          onChange={(e) => {
-                            setCustomImage(e.target.value);
-                            if (e.target.value) {
-                              setSelectedImage("");
-                            }
-                          }}
-                          className="w-full"
-                        />
-                      </BlurFade>
+                      <Input
+                        type="url"
+                        placeholder="输入自定义图片URL..."
+                        value={customImage}
+                        onChange={(e) => {
+                          setCustomImage(e.target.value);
+                          if (e.target.value) {
+                            setSelectedImage("");
+                          }
+                        }}
+                        className="w-full"
+                      />
 
-                      {/* 图片选择 */}
-                      <BlurFade
-                        delay={0.1 + PRESET_IMAGES.length * 0.05 + 0.1}
-                        inView
-                      >
-                        <div className="space-y-2">
-                          <Label className="text-sm font-medium">
-                            或拍照/上传图片
-                          </Label>
-                          <ImagePicker
-                            onImageSelect={handleImageSelect}
-                            trigger={
-                              <Button
-                                variant="outline"
-                                className="w-full h-12 flex items-center gap-2"
-                                disabled={uploadingImage}
-                              >
-                                {uploadingImage ? (
-                                  <>
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                    <span>上传中...</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <Images className="h-4 w-4" />
-                                    <span>选择图片</span>
-                                  </>
-                                )}
-                              </Button>
-                            }
-                          />
-                        </div>
-                      </BlurFade>
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium">
+                          或拍照/上传图片
+                        </Label>
+                        <ImagePicker
+                          onImageSelect={handleImageSelect}
+                          trigger={
+                            <Button
+                              variant="outline"
+                              className="w-full h-12 flex items-center gap-2"
+                              disabled={uploadingImage}
+                            >
+                              {uploadingImage ? (
+                                <>
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                  <span>上传中...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Images className="h-4 w-4" />
+                                  <span>选择图片</span>
+                                </>
+                              )}
+                            </Button>
+                          }
+                        />
+                      </div>
                     </div>
                   </SheetContent>
                 </Sheet>
