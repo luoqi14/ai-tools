@@ -3,6 +3,7 @@ import requests
 import os
 import base64
 from io import BytesIO
+from ..utils.gemini_service import gemini_service
 
 image_generation_bp = Blueprint('image_generation', __name__)
 
@@ -239,3 +240,119 @@ def upload_image():
             'success': False,
             'message': '不支持的文件格式，请上传 PNG, JPG, JPEG, GIF, BMP 或 WEBP 格式的图片'
         }), 400 
+
+@image_generation_bp.route('/proxy-image', methods=['GET'])
+def proxy_image():
+    """
+    代理获取BFL API返回的图片，解决CORS问题
+    """
+    image_url = request.args.get('url')
+    if not image_url:
+        return jsonify({
+            'success': False,
+            'message': '缺少图片URL参数'
+        }), 400
+    
+    # 验证URL是否来自BFL域名
+    if not 'bfl.ai' in image_url:
+        return jsonify({
+            'success': False,
+            'message': '只允许代理BFL域名的图片'
+        }), 403
+    
+    try:
+        # 代理请求图片
+        response = requests.get(image_url, timeout=30)
+        
+        if response.status_code == 200:
+            # 返回图片数据
+            from flask import Response
+            return Response(
+                response.content,
+                mimetype=response.headers.get('content-type', 'image/jpeg'),
+                headers={
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Methods': 'GET',
+                    'Access-Control-Allow-Headers': 'Content-Type',
+                    'Cache-Control': 'public, max-age=3600'  # 缓存1小时
+                }
+            )
+        else:
+            return jsonify({
+                'success': False,
+                'message': f'获取图片失败: HTTP {response.status_code}'
+            }), response.status_code
+            
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'代理图片失败: {str(e)}'
+        }), 500
+
+@image_generation_bp.route('/generate-prompts', methods=['POST'])
+def generate_prompts():
+    """
+    使用Gemini生成3条适合FLUX Kontext的提示词
+    支持文本输入和图片输入
+    """
+    try:
+        # 检查是否是多部分表单数据（包含图片）
+        if 'multipart/form-data' in request.content_type:
+            # 处理包含图片的请求
+            user_input = request.form.get('user_input', '').strip()
+            
+            input_image = None
+            input_image_mime_type = None
+            
+            # 检查是否有图片文件
+            if 'image' in request.files:
+                image_file = request.files['image']
+                if image_file and image_file.filename:
+                    # 读取图片数据
+                    input_image = image_file.read()
+                    input_image_mime_type = image_file.content_type
+            
+            # 检查是否有文本输入或图片输入
+            if not user_input and not input_image:
+                return jsonify({
+                    'success': False,
+                    'message': '请提供文本描述或上传图片'
+                }), 400
+        else:
+            # 处理JSON请求（仅文本）
+            data = request.get_json()
+            if not data:
+                return jsonify({
+                    'success': False,
+                    'message': '请求数据格式错误'
+                }), 400
+            
+            user_input = data.get('user_input', '').strip()
+            input_image = None
+            input_image_mime_type = None
+            
+            # 检查是否有文本输入
+            if not user_input:
+                return jsonify({
+                    'success': False,
+                    'message': '请提供文本描述'
+                }), 400
+        
+        # 调用Gemini服务生成提示词
+        prompts = gemini_service.generate_flux_prompts(user_input, input_image, input_image_mime_type)
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'prompts': prompts
+            }
+        })
+        
+    except Exception as e:
+        # 记录详细错误信息
+        print(f"生成提示词失败: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': str(e),
+            'error_type': 'gemini_api_error'
+        }), 500 

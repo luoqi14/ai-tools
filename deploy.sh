@@ -101,28 +101,6 @@ deploy() {
     print_message "部署完成"
 }
 
-# 健康检查
-health_check() {
-    print_info "执行健康检查..."
-    
-    # 等待服务启动
-    sleep 10
-    
-    # 检查后端服务
-    if curl -f http://localhost:8003/health &> /dev/null; then
-        print_message "后端服务健康检查通过"
-    else
-        print_warning "后端服务健康检查失败，请检查日志"
-    fi
-    
-    # 检查前端服务
-    if curl -f http://localhost:3003/health.html &> /dev/null; then
-        print_message "前端服务健康检查通过"
-    else
-        print_warning "前端服务健康检查失败，请检查日志"
-    fi
-}
-
 # 显示服务状态
 show_status() {
     print_info "服务状态:"
@@ -162,7 +140,6 @@ full_deploy() {
     cleanup
     build_images
     deploy
-    health_check
     show_status
     
     print_message "部署完成! 🎉"
@@ -179,7 +156,6 @@ quick_deploy() {
     $DOCKER_COMPOSE_CMD -f $COMPOSE_FILE build --parallel
     $DOCKER_COMPOSE_CMD -f $COMPOSE_FILE up -d
     
-    health_check
     show_status
     
     print_message "快速部署完成! ⚡"

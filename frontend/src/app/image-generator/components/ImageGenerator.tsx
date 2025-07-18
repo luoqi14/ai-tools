@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { api, ImageGenerationRequest, ImageGenerationTask } from "@/lib/api";
+import { api, ImageGenerationRequest, API_BASE_URL } from "@/lib/api";
 import { toast } from "sonner";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -20,7 +20,14 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Progress } from "@/components/ui/progress";
+// import { Progress } from "@/components/ui/progress";
+import {
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  CarouselNext,
+  CarouselPrevious,
+} from "@/components/ui/carousel";
 import {
   Settings,
   Wand2,
@@ -29,6 +36,8 @@ import {
   X,
   Upload,
   ArrowLeftRight,
+  Pen,
+  Package,
 } from "lucide-react";
 
 // 导入Aceternity UI组件
@@ -36,17 +45,24 @@ import { FileUpload } from "@/components/ui/file-upload";
 import { Compare } from "@/components/ui/compare";
 
 // 导入Magic UI组件
-import { Dock, DockIcon } from "@/components/magicui/dock";
-import { Lens } from "@/components/magicui/lens";
+// import { Lens } from "@/components/magicui/lens";
 // import { BorderBeam } from "@/components/magicui/border-beam";
+
+// 导入Floating Dock组件
+import { FloatingDock } from "@/components/ui/floating-dock";
+
+// 导入提示词选择对话框
+import { PromptSelectionDialog } from "@/components/ui/prompt-selection-dialog";
+
+// 导入路径绘制组件
+import PathDrawingCanvas from "./PathDrawingCanvas";
+
+// 导入百宝箱组件
+import TreasureBox from "./TreasureBox";
 
 export default function ImageGenerator() {
   const [prompt, setPrompt] = useState("");
-  const [inputImage, setInputImage] = useState<File | null>(null);
-  const [inputImagePreview, setInputImagePreview] = useState<string>("");
-  const [task, setTask] = useState<ImageGenerationTask | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [progress, setProgress] = useState(0);
 
   // 参数状态
   const [aspectRatio, setAspectRatio] = useState("auto");
@@ -58,6 +74,74 @@ export default function ImageGenerator() {
 
   // 比较模式状态
   const [isCompareMode, setIsCompareMode] = useState(false);
+
+  // 提示词选择状态
+  const [showPromptDialog, setShowPromptDialog] = useState(false);
+  const [generatedPrompts, setGeneratedPrompts] = useState<
+    Array<{
+      chinese: string;
+      english: string;
+      reason: string;
+    }>
+  >([]);
+  const [isGeneratingPrompts, setIsGeneratingPrompts] = useState(false);
+  const [originalUserInput, setOriginalUserInput] = useState("");
+
+  // 历史图片状态
+  const [historyImages, setHistoryImages] = useState<
+    Array<{
+      id: string;
+      url: string;
+      thumbnailUrl?: string;
+      prompt: string;
+      timestamp: number;
+      file?: File;
+    }>
+  >([]);
+
+  // blob URL缓存
+  const [blobUrls, setBlobUrls] = useState<Map<string, string>>(new Map());
+  const [currentImageId, setCurrentImageId] = useState<string | null>(null);
+
+  // 路径绘制状态
+  const [showPathDrawing, setShowPathDrawing] = useState(false);
+
+  // 百宝箱状态
+  const [showTreasureBox, setShowTreasureBox] = useState(false);
+  const [treasureBoxImages, setTreasureBoxImages] = useState<
+    Array<{
+      id: string;
+      url: string;
+      thumbnailUrl?: string;
+      file: File;
+      timestamp: number;
+    }>
+  >([]);
+
+  // 计算当前图片
+  const getCurrentImage = (): string | null => {
+    if (!currentImageId || !historyImages.length) return null;
+
+    const currentIndex = historyImages.findIndex(
+      (img) => img.id === currentImageId
+    );
+    if (currentIndex <= -1) return null;
+
+    return historyImages[currentIndex].url;
+  };
+
+  // 计算前一张图片
+  const getPreviousImage = (): string | null => {
+    if (!currentImageId || !historyImages.length) return null;
+
+    const currentIndex = historyImages.findIndex(
+      (img) => img.id === currentImageId
+    );
+    if (currentIndex <= 0) return null;
+
+    // 返回前一张图片的URL
+    return historyImages[currentIndex - 1].url;
+  };
 
   const showToast = (
     variant: "success" | "error" | "info",
@@ -84,11 +168,21 @@ export default function ImageGenerator() {
         showToast("error", "文件错误", "请选择有效的图片文件");
         return;
       }
-      setInputImage(file);
       const reader = new FileReader();
       reader.onload = (e) => {
         if (e.target?.result) {
-          setInputImagePreview(e.target.result as string);
+          const imageUrl = e.target.result as string;
+
+          // 添加上传的图片到历史记录
+          const newHistoryItem = {
+            id: Date.now().toString(),
+            url: imageUrl,
+            prompt: "上传的图片",
+            timestamp: Date.now(),
+            file: file,
+          };
+          setHistoryImages((prev) => [...prev.slice(-19), newHistoryItem]);
+          setCurrentImageId(newHistoryItem.id);
         }
       };
       reader.readAsDataURL(file);
@@ -129,15 +223,59 @@ export default function ImageGenerator() {
         return;
       }
 
-      setTask(taskData);
-
-      const progressValue = Math.min((attempts / maxAttempts) * 90 + 10, 90);
-      setProgress(progressValue);
+      // const progressValue = Math.min((attempts / maxAttempts) * 90 + 10, 90);
+      // setProgress(progressValue);
 
       if (taskData.status === "completed") {
-        setProgress(100);
+        // setProgress(100);
         setIsGenerating(false);
         showToast("success", "图片生成成功！", "您可以预览和下载生成的图片");
+
+        // 生成成功后重置所有状态
+        if (showPathDrawing) {
+          setShowPathDrawing(false);
+          console.log(
+            "Auto-exiting path drawing mode after successful generation"
+          );
+        }
+
+        // 清除canvas上的路径和拖拽的图片
+        const canvas = (
+          window as {
+            pathDrawingCanvas?: {
+              clearPath: () => void;
+              clearDroppedImages: () => void;
+              hasPath: () => boolean;
+              hasDroppedImages: () => boolean;
+              exportCompositeImage: () => string | null;
+            };
+          }
+        ).pathDrawingCanvas;
+
+        if (canvas) {
+          canvas.clearPath();
+          canvas.clearDroppedImages();
+          console.log(
+            "Cleared canvas paths and dropped images after generation"
+          );
+        }
+
+        // 添加到历史记录
+        if (taskData.result?.image_url) {
+          // 先获取blob URL，然后统一使用blob URL保存到历史记录
+          getBlobUrl(taskData.result.image_url).then((blobUrl) => {
+            const newHistoryItem = {
+              id: Date.now().toString(),
+              url: blobUrl, // 统一保存blob URL用于显示
+              originalUrl: taskData.result!.image_url, // 保存原始URL用于获取文件
+              prompt: originalUserInput || prompt,
+              timestamp: Date.now(),
+            };
+            setHistoryImages((prev) => [...prev.slice(-19), newHistoryItem]); // 保留最近20张图片，新的在后
+            selectHistoryImage(newHistoryItem);
+            setCurrentImageId(newHistoryItem.id);
+          });
+        }
       } else if (taskData.status === "failed") {
         setIsGenerating(false);
         showToast("error", "生成失败", taskData.error || "未知错误");
@@ -158,23 +296,138 @@ export default function ImageGenerator() {
     };
   };
 
+  // 路径绘制相关函数
+  const handlePathComplete = (pathData: string) => {
+    // setPathData(pathData); // 路径数据现在由PathDrawingCanvas内部管理
+    console.log("Path completed:", pathData);
+  };
+
+  const togglePathDrawing = () => {
+    setShowPathDrawing(!showPathDrawing);
+  };
+
+  // 百宝箱相关函数
+  const toggleTreasureBox = () => {
+    const newShowTreasureBox = !showTreasureBox;
+    setShowTreasureBox(newShowTreasureBox);
+  };
+
+  const handleTreasureBoxImageUpload = useCallback(
+    (file: File, thumbnailUrl?: string) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        if (e.target?.result) {
+          const imageUrl = e.target.result as string;
+          const newImage = {
+            id: Date.now().toString(),
+            url: imageUrl,
+            thumbnailUrl: thumbnailUrl, // 保存缩略图URL
+            file: file,
+            timestamp: Date.now(),
+          };
+          setTreasureBoxImages((prev) => [...prev, newImage]);
+          showToast("success", "图片上传成功", "已添加到百宝箱");
+        }
+      };
+      reader.readAsDataURL(file);
+    },
+    []
+  );
+
+  const handleTreasureBoxImageRemove = useCallback((id: string) => {
+    setTreasureBoxImages((prev) => prev.filter((img) => img.id !== id));
+    showToast("info", "图片已删除", "已从百宝箱中移除");
+  }, []);
+
+  // 拖拽处理现在由PathDrawingCanvas内部管理
+
+  const getCompositeImageForGeneration = async (): Promise<File | null> => {
+    // 现在统一从canvas获取图片，不再做复杂判断
+    const canvas = (
+      window as {
+        pathDrawingCanvas?: {
+          clearPath: () => void;
+          exportCompositeImage: () => string | null;
+          hasPath: () => boolean;
+          clearDroppedImages: () => void;
+          hasDroppedImages: () => boolean;
+        };
+      }
+    ).pathDrawingCanvas;
+
+    if (canvas) {
+      const compositeDataUrl = canvas.exportCompositeImage();
+      if (compositeDataUrl) {
+        // 将 data URL 转换为 File 对象
+        const response = await fetch(compositeDataUrl);
+        const blob = await response.blob();
+        return new File([blob], "composite-image.png", { type: "image/png" });
+      }
+    }
+
+    return null;
+  };
+
   const handleGenerate = async () => {
-    if (!prompt.trim()) {
-      showToast("error", "输入错误", "请输入提示词");
+    // 检查是否有提示词或图片输入
+    if (!prompt.trim() && !currentImageId) {
+      showToast("error", "输入错误", "请输入提示词或上传图片");
       return;
     }
 
+    // 统一从canvas获取图片
+    let imageToUse: File | null = null;
+    if (currentImageId) {
+      imageToUse = await getCompositeImageForGeneration();
+      if (!imageToUse) {
+        showToast("error", "图像处理失败", "无法从canvas获取图像");
+        return;
+      }
+    }
+
+    // 先调用Gemini生成提示词
+    setIsGeneratingPrompts(true);
+    setOriginalUserInput(prompt);
+    showToast("info", "AI正在优化提示词", "正在为您生成更好的提示词选项...");
+
+    const promptResponse = await api.generatePrompts(
+      prompt,
+      imageToUse || undefined
+    );
+    setIsGeneratingPrompts(false);
+
+    if (promptResponse.error) {
+      showToast("error", "AI提示词生成失败", promptResponse.error);
+      // 不再自动回退，让用户知道AI服务出现了问题
+      return;
+    }
+
+    // 显示提示词选择对话框
+    setGeneratedPrompts(promptResponse.prompts || []);
+    setShowPromptDialog(true);
+  };
+
+  const generateImageWithPrompt = async (selectedPrompt: string) => {
     setIsGenerating(true);
-    setProgress(10);
-    setTask(null);
+
+    // 统一从canvas获取图片
+    let imageToUse: File | null = null;
+    if (currentImageId) {
+      imageToUse = await getCompositeImageForGeneration();
+      if (!imageToUse) {
+        showToast("error", "图像处理失败", "无法从canvas获取图像");
+        setIsGenerating(false);
+        return;
+      }
+    }
 
     const request: ImageGenerationRequest = {
-      prompt,
+      prompt: selectedPrompt,
       aspect_ratio: aspectRatio === "auto" ? undefined : aspectRatio,
       output_format: outputFormat,
       safety_tolerance: safetyTolerance,
       seed: useRandomSeed ? undefined : seed,
-      input_image: inputImage || undefined,
+      input_image: imageToUse || undefined,
       prompt_upsampling: promptUpsampling,
     };
 
@@ -183,7 +436,7 @@ export default function ImageGenerator() {
 
     if (response.error) {
       setIsGenerating(false);
-      setProgress(0);
+      // setProgress(0);
       showToast("error", "生成失败", response.error);
       return;
     }
@@ -194,348 +447,532 @@ export default function ImageGenerator() {
     }
   };
 
+  const handlePromptSelect = (selectedPrompt: string) => {
+    generateImageWithPrompt(selectedPrompt);
+  };
+
   const downloadImage = () => {
-    if (task?.result?.image_url) {
+    const imageUrl = getCurrentImage();
+    if (imageUrl) {
       const link = document.createElement("a");
-      link.href = task.result.image_url;
+      link.href = imageUrl;
       link.download = `generated-image-${Date.now()}.${outputFormat}`;
       link.click();
     }
   };
 
   const clearImage = () => {
-    setInputImage(null);
-    setInputImagePreview("");
-    setTask(null);
-    setProgress(0);
     setIsGenerating(false);
     setIsCompareMode(false);
+    setCurrentImageId(null);
+  };
+
+  // 获取代理图片URL
+  const getProxyImageUrl = (originalUrl: string) => {
+    if (originalUrl.includes("bfl.ai")) {
+      return `${API_BASE_URL}/api/image-generation/proxy-image?url=${encodeURIComponent(
+        originalUrl
+      )}`;
+    }
+    return originalUrl;
+  };
+
+  // 获取blob URL用于显示
+  const getBlobUrl = async (originalUrl: string): Promise<string> => {
+    // 检查缓存
+    if (blobUrls.has(originalUrl)) {
+      return blobUrls.get(originalUrl)!;
+    }
+
+    // 如果不是需要代理的URL，直接返回
+    if (!originalUrl.includes("bfl.ai")) {
+      return originalUrl;
+    }
+
+    try {
+      const proxyUrl = `${API_BASE_URL}/api/image-generation/proxy-image?url=${encodeURIComponent(
+        originalUrl
+      )}`;
+
+      const response = await fetch(proxyUrl, {
+        method: "GET",
+        headers: {
+          Accept: "image/*",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(
+          `HTTP error! status: ${response.status} ${response.statusText}`
+        );
+      }
+
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.startsWith("image/")) {
+        throw new Error(`Invalid content type: ${contentType}`);
+      }
+
+      const blob = await response.blob();
+      if (blob.size === 0) {
+        throw new Error("Empty blob received");
+      }
+
+      const blobUrl = URL.createObjectURL(blob);
+
+      // 缓存blob URL
+      setBlobUrls((prev) => new Map(prev).set(originalUrl, blobUrl));
+      return blobUrl;
+    } catch (error) {
+      console.error("获取blob URL失败:", error);
+      // 如果代理失败，尝试直接访问原始URL（可能会有CORS问题）
+      return originalUrl;
+    }
+  };
+
+  // 选择历史图片
+  const selectHistoryImage = async (historyItem: (typeof historyImages)[0]) => {
+    try {
+      console.log("选择历史图片:", historyItem);
+
+      // 设置基本状态
+      setCurrentImageId(historyItem.id);
+      // setPrompt(historyItem.prompt);
+
+      let file: File;
+      let previewUrl: string;
+
+      if (historyItem.file) {
+        // 如果是上传的图片，直接使用原始文件
+        console.log("使用原始文件");
+        file = historyItem.file;
+        previewUrl = historyItem.url; // 对于上传的图片，url就是blob URL
+      } else {
+        // 现在历史记录中的URL都是blob URL，直接使用
+        previewUrl = historyItem.url;
+        console.log("使用历史记录中的blob URL:", previewUrl);
+
+        // 尝试获取文件用于生成
+        try {
+          // 使用原始URL获取文件，如果没有originalUrl则使用url
+          const urlForFetch =
+            (historyItem as { originalUrl?: string; url: string })
+              .originalUrl || historyItem.url;
+          const proxyUrl = getProxyImageUrl(urlForFetch);
+          console.log("从代理URL获取图片:", proxyUrl);
+          const response = await fetch(proxyUrl);
+
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+
+          const blob = await response.blob();
+          console.log("Blob大小:", blob.size, "类型:", blob.type);
+          file = new File([blob], `history-${historyItem.id}.jpg`, {
+            type: "image/jpeg",
+          });
+        } catch (fetchError) {
+          console.warn("获取文件失败，创建虚拟文件:", fetchError);
+          // 如果无法获取文件，创建一个虚拟文件
+          file = new File([], `history-${historyItem.id}.jpg`, {
+            type: "image/jpeg",
+          });
+        }
+      }
+    } catch (error) {
+      console.error("加载历史图片失败:", error);
+      showToast(
+        "error",
+        "加载历史图片失败",
+        error instanceof Error ? error.message : "请重试"
+      );
+    }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex flex-col">
+    <div className="h-screen bg-gradient-to-br from-slate-50 to-slate-100 relative overflow-hidden">
       {/* 主要内容区域 - 图片展示 */}
-      <div className="flex-1 flex items-center justify-center p-6">
-        <div className="w-full max-w-4xl">
+      <div className="flex items-center justify-center h-full">
+        <div className="w-full h-full flex items-center justify-center">
           {/* 文件上传区域 */}
-          {!inputImagePreview && !task?.result?.image_url && (
-            <div className="mb-8">
-              <FileUpload onChange={handleImageUpload} />
+          {!currentImageId && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-full max-w-2xl px-8">
+                <FileUpload onChange={handleImageUpload} />
+              </div>
             </div>
           )}
 
           {/* 图片对比区域 - 比较模式 */}
-          {inputImagePreview && task?.result?.image_url && isCompareMode && (
-            <div className="relative">
-              <div className="aspect-video w-full max-w-3xl mx-auto">
-                <Compare
-                  firstImage={inputImagePreview}
-                  secondImage={task.result.image_url}
-                  firstImageClassName="object-contain"
-                  secondImageClassname="object-contain"
-                  className="rounded-lg border"
-                  slideMode="hover"
-                  autoplay={true}
-                  autoplayDuration={3000}
-                />
-              </div>
-              {/* 图片控制按钮 */}
-              <div className="absolute top-4 right-4 flex gap-2">
-                <Button
-                  onClick={clearImage}
-                  variant="destructive"
-                  size="icon"
-                  className="h-8 w-8"
-                  title="清除图片"
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-                <Button
-                  onClick={() => {
-                    const input = document.createElement("input");
-                    input.type = "file";
-                    input.accept = "image/*";
-                    input.onchange = (e) => {
-                      const file = (e.target as HTMLInputElement).files?.[0];
-                      if (file) {
-                        handleImageUpload([file]);
-                        setTask(null); // 清除之前的生成结果
-                      }
-                    };
-                    input.click();
-                  }}
-                  variant="outline"
-                  size="icon"
-                  className="h-8 w-8"
-                  title="重新上传"
-                >
-                  <Upload className="h-4 w-4" />
-                </Button>
-              </div>
+          {isCompareMode && (
+            <div className="relative w-full h-[calc(100vh-332px)] flex items-center justify-center self-start pt-[16px]">
+              <Compare
+                firstImage={getPreviousImage()!}
+                secondImage={getCurrentImage()!}
+                firstImageClassName="object-contain"
+                secondImageClassname="object-contain"
+                className="rounded-lg w-full h-full"
+                slideMode="hover"
+                autoplay={true}
+                autoplayDuration={3000}
+              />
             </div>
           )}
 
-          {/* 单图片展示 - 默认模式 */}
-          {task?.result?.image_url &&
-            (!inputImagePreview || !isCompareMode) && (
-              <div className="flex justify-center">
-                <Lens
-                  zoomFactor={2.5}
-                  lensSize={180}
-                  ariaLabel="生成图片放大镜"
-                >
-                  <img
-                    src={task.result.image_url}
-                    alt="Generated"
-                    className="max-w-full max-h-[70vh] object-contain rounded-lg shadow-lg"
-                  />
-                </Lens>
-              </div>
-            )}
-
-          {/* 上传的图片预览 */}
-          {inputImagePreview && !task?.result?.image_url && (
-            <div className="relative">
-              <div className="flex justify-center">
-                <Lens
-                  zoomFactor={2.2}
-                  lensSize={160}
-                  ariaLabel="输入图片放大镜"
-                >
-                  <img
-                    src={inputImagePreview}
-                    alt="Input"
-                    className="max-w-full max-h-[70vh] object-contain rounded-lg shadow-lg"
-                  />
-                </Lens>
-              </div>
-              {/* 图片控制按钮 */}
-              <div className="absolute top-4 right-4 flex gap-2">
-                <Button
-                  onClick={clearImage}
-                  variant="destructive"
-                  size="icon"
-                  className="h-8 w-8"
-                  title="清除图片"
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-                <Button
-                  onClick={() => {
-                    const input = document.createElement("input");
-                    input.type = "file";
-                    input.accept = "image/*";
-                    input.onchange = (e) => {
-                      const file = (e.target as HTMLInputElement).files?.[0];
-                      if (file) {
-                        handleImageUpload([file]);
-                      }
-                    };
-                    input.click();
-                  }}
-                  variant="outline"
-                  size="icon"
-                  className="h-8 w-8"
-                  title="重新上传"
-                >
-                  <Upload className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {/* 进度条 */}
-          {isGenerating && (
-            <div className="mt-6 max-w-md mx-auto">
-              <Progress value={progress} className="h-2" />
-              <p className="text-sm text-gray-600 mt-2 text-center">
-                生成中... {progress.toFixed(0)}%
-              </p>
-            </div>
+          {/* PathDrawingCanvas - 处理所有图片展示 */}
+          {!isCompareMode && (
+            <PathDrawingCanvas
+              backgroundImage={getCurrentImage() || undefined}
+              onPathComplete={handlePathComplete}
+              showPathDrawing={showPathDrawing}
+              className="absolute inset-0"
+            />
           )}
         </div>
       </div>
 
       {/* 底部输入区域 */}
-      <div className="p-6 pb-8">
+      <div className="absolute bottom-0 left-0 right-0 p-6 pb-8 backdrop-blur-md bg-white/20 border-t border-white/30">
         <div className="max-w-4xl mx-auto mb-4">
+          {/* 历史图片展示 */}
+          {historyImages.length > 0 && (
+            <div className="mb-4">
+              <div className="relative">
+                <Carousel
+                  opts={{
+                    align: "start",
+                    loop: false,
+                  }}
+                  className="w-full max-w-full"
+                >
+                  <CarouselContent className="-ml-2 md:-ml-4">
+                    {historyImages.map((item) => (
+                      <CarouselItem
+                        key={item.id}
+                        className="pl-2 md:pl-4 basis-auto"
+                      >
+                        <div
+                          className={`relative w-16 h-16 rounded-lg overflow-hidden cursor-pointer border-2 transition-all ${
+                            currentImageId === item.id
+                              ? "border-purple-500 ring-2 ring-purple-200"
+                              : "border-gray-200 hover:border-gray-300"
+                          }`}
+                          onClick={() => selectHistoryImage(item)}
+                          title={`${item.prompt}`}
+                        >
+                          <img
+                            src={item.url} // 现在历史记录中的URL都是blob URL，直接使用
+                            alt={`历史图片 ${item.id}`}
+                            className="w-full h-full object-cover hover:scale-105"
+                          />
+                          {currentImageId === item.id && (
+                            <div className="absolute inset-0 bg-purple-500/10 flex items-center justify-center">
+                              <div className="w-2 h-2 bg-purple-500 rounded-full shadow-lg"></div>
+                            </div>
+                          )}
+                        </div>
+                      </CarouselItem>
+                    ))}
+                  </CarouselContent>
+                  <CarouselPrevious className="-left-4 h-8 w-8 bg-white/80 backdrop-blur-sm border shadow-md hover:bg-white/90" />
+                  <CarouselNext className="-right-4 h-8 w-8 bg-white/80 backdrop-blur-sm border shadow-md hover:bg-white/90" />
+                </Carousel>
+              </div>
+            </div>
+          )}
+
           <Textarea
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             placeholder="用英文描述您想要生成的图片..."
-            className="min-h-[80px] resize-none bg-white/80 backdrop-blur-sm border-gray-300"
+            className="min-h-[80px] resize-none bg-white/50 backdrop-blur-md border-input placeholder:text-gray-400 focus-visible:border-color-none focus-visible:ring-0 focus-visible:ring-offset-0 rounded-2xl"
             disabled={isGenerating}
           />
         </div>
 
-        {/* Dock控制区域 */}
-        <Dock
-          iconSize={50}
-          iconMagnification={70}
-          iconDistance={150}
-          direction="middle"
-          className="bg-white/90 backdrop-blur-md border-gray-200 shadow-lg"
-        >
-          {/* 参数设置按钮 */}
-          <DockIcon>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-full w-full hover:bg-gray-100"
-                  disabled={isGenerating}
-                  title="参数设置"
-                >
-                  <Settings className="h-6 w-6" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-80" align="center" side="top">
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="aspect-ratio">纵横比</Label>
-                    <Select value={aspectRatio} onValueChange={setAspectRatio}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="auto">自动</SelectItem>
-                        <SelectItem value="1:1">1:1 (正方形)</SelectItem>
-                        <SelectItem value="16:9">16:9 (宽屏)</SelectItem>
-                        <SelectItem value="9:16">9:16 (竖屏)</SelectItem>
-                        <SelectItem value="3:2">3:2 (横向)</SelectItem>
-                        <SelectItem value="2:3">2:3 (纵向)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="output-format">输出格式</Label>
-                    <Select
-                      value={outputFormat}
-                      onValueChange={setOutputFormat}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="jpeg">JPEG</SelectItem>
-                        <SelectItem value="png">PNG</SelectItem>
-                        <SelectItem value="webp">WebP</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="prompt-upsampling">提示词增强</Label>
-                    <Switch
-                      id="prompt-upsampling"
-                      checked={promptUpsampling}
-                      onCheckedChange={setPromptUpsampling}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="safety-tolerance">安全等级</Label>
-                    <Select
-                      value={safetyTolerance.toString()}
-                      onValueChange={(value) =>
-                        setSafetyTolerance(parseInt(value))
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="1">1 (最严格)</SelectItem>
-                        <SelectItem value="2">2 (严格)</SelectItem>
-                        <SelectItem value="3">3 (中等)</SelectItem>
-                        <SelectItem value="4">4 (宽松)</SelectItem>
-                        <SelectItem value="5">5 (最宽松)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="use-random-seed">随机种子</Label>
-                      <Switch
-                        id="use-random-seed"
-                        checked={useRandomSeed}
-                        onCheckedChange={setUseRandomSeed}
-                      />
-                    </div>
-                    {!useRandomSeed && (
-                      <div className="space-y-2">
-                        <Label htmlFor="seed">种子值</Label>
-                        <Input
-                          id="seed"
-                          type="text"
-                          value={seed}
-                          onChange={(e) => setSeed(e.target.value)}
-                          placeholder="输入种子值（可选）"
+        {/* Floating Dock控制区域 */}
+        <div className="flex justify-center">
+          <FloatingDock
+            items={[
+              // 清空图片按钮
+              ...(currentImageId
+                ? [
+                    {
+                      title: "清空图片",
+                      icon: <X className="text-red-600 h-full w-full" />,
+                      onClick: clearImage,
+                    },
+                  ]
+                : []),
+              // 上传图片按钮
+              {
+                title: "上传图片",
+                icon: <Upload className="text-blue-600 h-full w-full" />,
+                onClick: () => {
+                  const input = document.createElement("input");
+                  input.type = "file";
+                  input.accept = "image/*";
+                  input.onchange = (e) => {
+                    const file = (e.target as HTMLInputElement).files?.[0];
+                    if (file) {
+                      handleImageUpload([file]);
+                    }
+                  };
+                  input.click();
+                },
+              },
+              // 路径绘制按钮
+              ...(currentImageId
+                ? [
+                    {
+                      title: showPathDrawing ? "退出绘制" : "绘制路径",
+                      icon: (
+                        <Pen
+                          className={`h-full w-full ${
+                            showPathDrawing ? "text-red-600" : "text-green-600"
+                          }`}
                         />
+                      ),
+                      onClick: togglePathDrawing,
+                    },
+                  ]
+                : []),
+              // 百宝箱按钮
+              {
+                title: showTreasureBox ? "关闭百宝箱" : "打开百宝箱",
+                icon: (
+                  <Package
+                    className={`h-full w-full ${
+                      showTreasureBox ? "text-orange-600" : "text-purple-600"
+                    }`}
+                  />
+                ),
+                onClick: toggleTreasureBox,
+              },
+              // 参数设置按钮
+              {
+                title: "参数设置",
+                icon: <Settings className="h-full w-full" />,
+                element: (
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-full w-full hover:bg-gray-100"
+                        disabled={isGenerating}
+                        title="参数设置"
+                      >
+                        <Settings className="h-full w-full" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-80" align="center" side="top">
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="aspect-ratio">纵横比</Label>
+                          <Select
+                            value={aspectRatio}
+                            onValueChange={setAspectRatio}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="auto">自动</SelectItem>
+                              <SelectItem value="1:1">1:1 (正方形)</SelectItem>
+                              <SelectItem value="16:9">16:9 (宽屏)</SelectItem>
+                              <SelectItem value="9:16">9:16 (竖屏)</SelectItem>
+                              <SelectItem value="3:2">3:2 (横向)</SelectItem>
+                              <SelectItem value="2:3">2:3 (纵向)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="output-format">输出格式</Label>
+                          <Select
+                            value={outputFormat}
+                            onValueChange={setOutputFormat}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="jpeg">JPEG</SelectItem>
+                              <SelectItem value="png">PNG</SelectItem>
+                              <SelectItem value="webp">WebP</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <Label htmlFor="prompt-upsampling">提示词增强</Label>
+                          <Switch
+                            id="prompt-upsampling"
+                            checked={promptUpsampling}
+                            onCheckedChange={setPromptUpsampling}
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="safety-tolerance">安全等级</Label>
+                          <Select
+                            value={safetyTolerance.toString()}
+                            onValueChange={(value) =>
+                              setSafetyTolerance(parseInt(value))
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="1">1 (最严格)</SelectItem>
+                              <SelectItem value="2">2 (严格)</SelectItem>
+                              <SelectItem value="3">3 (中等)</SelectItem>
+                              <SelectItem value="4">4 (宽松)</SelectItem>
+                              <SelectItem value="5">5 (最宽松)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <Label htmlFor="use-random-seed">随机种子</Label>
+                            <Switch
+                              id="use-random-seed"
+                              checked={useRandomSeed}
+                              onCheckedChange={setUseRandomSeed}
+                            />
+                          </div>
+                          {!useRandomSeed && (
+                            <div className="space-y-2">
+                              <Label htmlFor="seed">种子值</Label>
+                              <Input
+                                id="seed"
+                                type="text"
+                                value={seed}
+                                onChange={(e) => setSeed(e.target.value)}
+                                placeholder="输入种子值（可选）"
+                              />
+                            </div>
+                          )}
+                        </div>
                       </div>
+                    </PopoverContent>
+                  </Popover>
+                ),
+              },
+              // 生成按钮
+              {
+                title: "生成图片",
+                icon:
+                  isGenerating || isGeneratingPrompts ? (
+                    <RefreshCw className="h-full w-full animate-spin" />
+                  ) : (
+                    <Wand2 className="h-full w-full" />
+                  ),
+                element: (
+                  <Button
+                    onClick={handleGenerate}
+                    disabled={
+                      isGenerating ||
+                      isGeneratingPrompts ||
+                      (!prompt.trim() && !currentImageId)
+                    }
+                    className="h-full w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white border-0"
+                    title="生成图片"
+                  >
+                    {isGenerating || isGeneratingPrompts ? (
+                      <RefreshCw className="h-full w-full animate-spin" />
+                    ) : (
+                      <Wand2 className="h-full w-full" />
                     )}
-                  </div>
-                </div>
-              </PopoverContent>
-            </Popover>
-          </DockIcon>
-
-          {/* 生成按钮 */}
-          <DockIcon>
-            <Button
-              onClick={handleGenerate}
-              disabled={isGenerating || !prompt.trim()}
-              className="h-full w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white border-0"
-              title="生成图片"
-            >
-              {isGenerating ? (
-                <RefreshCw className="h-6 w-6 animate-spin" />
-              ) : (
-                <Wand2 className="h-6 w-6" />
-              )}
-            </Button>
-          </DockIcon>
-
-          {/* 比较按钮 */}
-          {inputImagePreview && task?.result?.image_url && (
-            <DockIcon>
-              <Button
-                onClick={() => setIsCompareMode(!isCompareMode)}
-                variant={isCompareMode ? "default" : "outline"}
-                className={`h-full w-full ${
-                  isCompareMode
-                    ? "bg-orange-500 hover:bg-orange-600 text-white border-0"
-                    : "hover:bg-orange-50 hover:border-orange-300"
-                }`}
-                title={isCompareMode ? "退出比较模式" : "比较图片"}
-              >
-                <ArrowLeftRight
-                  className={`h-6 w-6 ${
-                    isCompareMode ? "text-white" : "text-orange-600"
-                  }`}
-                />
-              </Button>
-            </DockIcon>
-          )}
-
-          {/* 下载按钮 */}
-          {task?.result?.image_url && (
-            <DockIcon>
-              <Button
-                onClick={downloadImage}
-                variant="outline"
-                className="h-full w-full hover:bg-green-50 hover:border-green-300"
-                title="下载图片"
-              >
-                <Download className="h-6 w-6 text-green-600" />
-              </Button>
-            </DockIcon>
-          )}
-        </Dock>
+                  </Button>
+                ),
+              },
+              // 比较按钮
+              ...(getPreviousImage() && getCurrentImage()
+                ? [
+                    {
+                      id: "compare",
+                      title: isCompareMode ? "退出比较模式" : "比较图片",
+                      icon: (
+                        <ArrowLeftRight
+                          className={`h-full w-full ${
+                            isCompareMode ? "text-white" : "text-orange-600"
+                          }`}
+                        />
+                      ),
+                      element: (
+                        <Button
+                          onClick={() => setIsCompareMode(!isCompareMode)}
+                          variant={isCompareMode ? "default" : "outline"}
+                          className={`h-full w-full ${
+                            isCompareMode
+                              ? "bg-orange-500 hover:bg-orange-600 text-white border-0"
+                              : "hover:bg-orange-50 hover:border-orange-300"
+                          }`}
+                          title={isCompareMode ? "退出比较模式" : "比较图片"}
+                        >
+                          <ArrowLeftRight
+                            className={`h-full w-full ${
+                              isCompareMode ? "text-white" : "text-orange-600"
+                            }`}
+                          />
+                        </Button>
+                      ),
+                    },
+                  ]
+                : []),
+              // 下载按钮
+              ...(getCurrentImage()
+                ? [
+                    {
+                      title: "下载图片",
+                      icon: (
+                        <Download className="h-full w-full text-green-600" />
+                      ),
+                      element: (
+                        <Button
+                          onClick={downloadImage}
+                          variant="outline"
+                          className="h-full w-full hover:bg-green-50 hover:border-green-300"
+                          title="下载图片"
+                        >
+                          <Download className="h-full w-full text-green-600" />
+                        </Button>
+                      ),
+                    },
+                  ]
+                : []),
+            ].filter((item) => {
+              if (isCompareMode) {
+                return item.id === "compare";
+              }
+              return true;
+            })}
+            desktopClassName=""
+            mobileClassName=""
+          />
+        </div>
       </div>
+
+      {/* 提示词选择对话框 */}
+      <PromptSelectionDialog
+        open={showPromptDialog}
+        onOpenChange={setShowPromptDialog}
+        prompts={generatedPrompts}
+        onSelect={handlePromptSelect}
+        originalInput={originalUserInput}
+      />
+
+      {/* 百宝箱 */}
+      <TreasureBox
+        isOpen={showTreasureBox}
+        onClose={() => setShowTreasureBox(false)}
+        images={treasureBoxImages}
+        onImageUpload={handleTreasureBoxImageUpload}
+        onImageRemove={handleTreasureBoxImageRemove}
+      />
     </div>
   );
 }

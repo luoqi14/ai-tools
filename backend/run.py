@@ -4,7 +4,7 @@ import os
 app = create_app()
  
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 8003))
+    port = int(os.environ.get('BACKEND_PORT', os.environ.get('PORT', 8003)))
     
     # 检查是否启用HTTPS
     if os.environ.get('HTTPS') == 'true':

@@ -1,5 +1,35 @@
-// API基础配置 - 通过环境变量配置
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://192.168.100.123:8003';
+// API基础配置 - 动态获取API基础URL
+const getApiBaseUrl = () => {
+  // 优先使用环境变量（但要确保不是空字符串）
+  const envUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+  if (envUrl && envUrl.trim() !== '') {
+    return envUrl;
+  }
+  
+  // 如果在浏览器环境中，根据当前域名动态确定
+  if (typeof window !== 'undefined') {
+    const { hostname, protocol } = window.location;
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      return 'http://localhost:8003';
+    }
+    return `${protocol}//${hostname}:8003`;
+  }
+  
+  // 服务端渲染时的默认值
+  return 'http://localhost:8003';
+};
+
+const API_BASE_URL = getApiBaseUrl();
+
+// 调试信息
+console.log('API Configuration:', {
+  envUrl: process.env.NEXT_PUBLIC_API_BASE_URL,
+  finalUrl: API_BASE_URL,
+  hostname: typeof window !== 'undefined' ? window.location.hostname : 'server-side'
+});
+
+// 导出API_BASE_URL供其他组件使用
+export { API_BASE_URL };
 
 // 工具数据类型定义
 export interface Tool {
@@ -130,6 +160,50 @@ export const api = {
     } catch (error) {
       console.error('获取分类网络错误:', error);
       return [];
+    }
+  },
+
+  // 生成提示词
+  async generatePrompts(userInput: string, inputImage?: File): Promise<{ prompts: Array<{
+    chinese: string;
+    english: string;
+    reason: string;
+  }>; error?: string }> {
+    try {
+      let response: Response;
+      
+      if (inputImage) {
+        // 如果有图片，使用 FormData
+        const formData = new FormData();
+        formData.append('user_input', userInput);
+        formData.append('image', inputImage);
+        
+        response = await fetch(`${API_BASE_URL}/api/image-generation/generate-prompts`, {
+          method: 'POST',
+          body: formData,
+        });
+      } else {
+        // 如果没有图片，使用 JSON
+        response = await fetch(`${API_BASE_URL}/api/image-generation/generate-prompts`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            user_input: userInput,
+          }),
+        });
+      }
+
+      const result = await response.json();
+      
+      if (!result.success) {
+        return { prompts: [], error: result.message || '生成提示词失败' };
+      }
+      
+      return { prompts: result.data.prompts };
+    } catch (error) {
+      return { prompts: [], error: error instanceof Error ? error.message : '网络错误' };
     }
   },
 
