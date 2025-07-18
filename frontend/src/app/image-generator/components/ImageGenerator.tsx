@@ -4,6 +4,21 @@ import React, { useState, useCallback, useEffect, useRef } from "react";
 import { api, ImageGenerationRequest, API_BASE_URL } from "@/lib/api";
 import { toast } from "sonner";
 import { Textarea } from "@/components/ui/textarea";
+
+// 定义选择的提示词信息类型
+interface SelectedPromptInfo {
+  originalUserInput: string;
+  optimizedPrompt: string;
+  chinesePrompt: string;
+  optimizationReason: string;
+}
+
+// 扩展 Window 接口
+declare global {
+  interface Window {
+    selectedPromptInfo?: SelectedPromptInfo;
+  }
+}
 import {
   Select,
   SelectContent,
@@ -224,18 +239,7 @@ export default function ImageGenerator() {
     return historyImages[currentIndex].url;
   };
 
-  // 计算前一张图片（保留用于向后兼容）
-  const getPreviousImage = (): string | null => {
-    if (!currentImageId || !historyImages.length) return null;
 
-    const currentIndex = historyImages.findIndex(
-      (img) => img.id === currentImageId
-    );
-    if (currentIndex <= 0) return null;
-
-    // 返回前一张图片的URL
-    return historyImages[currentIndex - 1].url;
-  };
 
   // 获取当前图片的源图片（用于比较功能）
   const getSourceImage = (): string | null => {
@@ -507,7 +511,7 @@ export default function ImageGenerator() {
               const thumbnailUrl = await generateThumbnail(blobUrl);
 
               // 获取选择的提示词信息
-              const selectedInfo = (window as any).selectedPromptInfo;
+              const selectedInfo = window.selectedPromptInfo;
 
               const newHistoryItem = {
                 id: Date.now().toString(),
@@ -524,14 +528,14 @@ export default function ImageGenerator() {
               };
 
               // 清除临时保存的信息
-              delete (window as any).selectedPromptInfo;
+              delete window.selectedPromptInfo;
               setHistoryImages((prev) => [...prev.slice(-19), newHistoryItem]); // 保留最近20张图片，新的在后
               selectHistoryImage(newHistoryItem);
               setCurrentImageId(newHistoryItem.id);
             } catch (error) {
               console.error("生成缩略图失败:", error);
               // 如果缩略图生成失败，仍然添加原图
-              const selectedInfo = (window as any).selectedPromptInfo;
+              const selectedInfo = window.selectedPromptInfo;
 
               const newHistoryItem = {
                 id: Date.now().toString(),
@@ -547,7 +551,7 @@ export default function ImageGenerator() {
               };
 
               // 清除临时保存的信息
-              delete (window as any).selectedPromptInfo;
+              delete window.selectedPromptInfo;
               setHistoryImages((prev) => [...prev.slice(-19), newHistoryItem]); // 保留最近20张图片，新的在后
               selectHistoryImage(newHistoryItem);
               setCurrentImageId(newHistoryItem.id);
@@ -754,7 +758,7 @@ export default function ImageGenerator() {
     // 保存选择的提示词信息，用于后续保存到历史记录
     if (selectedPromptInfo) {
       // 将选择的提示词信息临时保存，在图片生成成功后使用
-      (window as any).selectedPromptInfo = {
+      window.selectedPromptInfo = {
         originalUserInput,
         optimizedPrompt: selectedPrompt,
         chinesePrompt: selectedPromptInfo.chinese, // 保存中文提示词
@@ -852,7 +856,7 @@ export default function ImageGenerator() {
       setCurrentImageId(historyItem.id);
       // setPrompt(historyItem.prompt);
 
-      let file: File;
+      let file: File | undefined;
       let previewUrl: string;
 
       if (historyItem.file) {
@@ -892,6 +896,9 @@ export default function ImageGenerator() {
           });
         }
       }
+
+      // 使用变量以避免未使用警告
+      console.log("选择的历史图片:", { file: file?.name, previewUrl });
     } catch (error) {
       console.error("加载历史图片失败:", error);
       showToast(

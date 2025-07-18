@@ -1,10 +1,9 @@
 "use client";
 
-import { useState } from "react";
+
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -12,12 +11,9 @@ import { Button } from "@/components/ui/button";
 import {
   CardContent,
   CardDescription,
-  CardHeader,
-  CardTitle,
   Card,
 } from "@/components/ui/card";
 import { MagicCard } from "@/components/magicui/magic-card";
-import { Wand2, Sparkles, Palette } from "lucide-react";
 
 interface PromptData {
   chinese: string;
@@ -40,15 +36,12 @@ export function PromptSelectionDialog({
   onSelect,
   originalInput,
 }: PromptSelectionDialogProps) {
-  const [selectedPrompt, setSelectedPrompt] = useState<string>("");
-
   const handleSelect = (prompt: string) => {
-    setSelectedPrompt(prompt);
     onSelect(prompt);
     onOpenChange(false);
   };
 
-  const icons = [Wand2, Sparkles, Palette];
+
 
   // 处理不同格式的提示词数据
   const getPromptDisplay = (prompt: string | PromptData) => {
@@ -80,7 +73,6 @@ export function PromptSelectionDialog({
 
         <div className="grid gap-4 py-4">
           {prompts.map((prompt, index) => {
-            const Icon = icons[index % icons.length];
             const promptData = getPromptDisplay(prompt);
             const promptValue = getPromptValue(prompt);
 
