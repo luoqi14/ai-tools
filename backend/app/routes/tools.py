@@ -112,7 +112,7 @@ def get_bing_image():
     """
     # 必应图片API列表
     bing_apis = [
-        'https://api.vvhan.com/api/bing?rand=sj',
+        'https://api.bimg.cc/random?w=1920&h=1080&mkt=zh-CN',
     ]
     
     # 随机选择一个API

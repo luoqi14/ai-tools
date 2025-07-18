@@ -3,22 +3,40 @@
 import React, { useRef, useEffect, useState, useCallback } from "react";
 import { Canvas, Path, FabricImage, Control, util, Point } from "fabric";
 
+interface GridConfig {
+  enabled: boolean;
+  size: number;
+  color: string;
+  opacity: number;
+  lineWidth: number;
+}
+
 interface PathDrawingCanvasProps {
   backgroundImage?: string;
   onPathComplete?: (pathData: string) => void;
+  onImageDropped?: () => void; // 新增：图片拖拽完成回调
   width?: number;
   height?: number;
   className?: string;
   showPathDrawing?: boolean; // 简化：只控制是否允许画笔功能
+  gridConfig?: GridConfig; // 新增：网格配置
 }
 
 const PathDrawingCanvas: React.FC<PathDrawingCanvasProps> = ({
   backgroundImage,
   onPathComplete,
+  onImageDropped,
   width = typeof window !== "undefined" ? window.innerWidth : 1920,
   height = typeof window !== "undefined" ? window.innerHeight : 1080,
   className = "",
   showPathDrawing = false,
+  gridConfig = {
+    enabled: true,
+    size: 25,
+    color: "#e5e5e5",
+    opacity: 0.5,
+    lineWidth: 1,
+  },
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fabricCanvasRef = useRef<Canvas | null>(null);
@@ -26,6 +44,62 @@ const PathDrawingCanvas: React.FC<PathDrawingCanvasProps> = ({
   const [currentPath, setCurrentPath] = useState<Path | null>(null);
   const [pathPoints, setPathPoints] = useState<string>("");
   const [, setDroppedImages] = useState<FabricImage[]>([]);
+
+  // 创建网格背景图案
+  const createGridDataURL = useCallback(() => {
+    if (!gridConfig.enabled) return null;
+
+    const { size, color, opacity, lineWidth } = gridConfig;
+
+    // 创建一个临时canvas来绘制网格图案
+    const patternCanvas = document.createElement('canvas');
+    const patternCtx = patternCanvas.getContext('2d');
+
+    if (!patternCtx) return null;
+
+    // 设置图案尺寸
+    patternCanvas.width = size;
+    patternCanvas.height = size;
+
+    // 设置背景为透明
+    patternCtx.clearRect(0, 0, size, size);
+
+    // 设置线条样式
+    patternCtx.strokeStyle = color;
+    patternCtx.lineWidth = lineWidth;
+    patternCtx.globalAlpha = opacity;
+
+    // 绘制网格线
+    patternCtx.beginPath();
+    // 垂直线
+    patternCtx.moveTo(size, 0);
+    patternCtx.lineTo(size, size);
+    // 水平线
+    patternCtx.moveTo(0, size);
+    patternCtx.lineTo(size, size);
+    patternCtx.stroke();
+
+    // 返回data URL
+    return patternCanvas.toDataURL();
+  }, [gridConfig]);
+
+  // 应用网格背景
+  const applyGridBackground = useCallback(async (canvas: Canvas) => {
+    if (!gridConfig.enabled) {
+      canvas.backgroundColor = 'transparent';
+      canvas.requestRenderAll();
+      return;
+    }
+
+    const gridDataURL = createGridDataURL();
+    if (gridDataURL) {
+      // 使用CSS样式应用网格背景
+      const canvasElement = canvas.getElement();
+      canvasElement.style.backgroundImage = `url(${gridDataURL})`;
+      canvasElement.style.backgroundRepeat = 'repeat';
+      canvasElement.style.backgroundSize = `${gridConfig.size}px ${gridConfig.size}px`;
+    }
+  }, [gridConfig, createGridDataURL]);
 
   // 创建笔形状的光标
   const createPenCursor = () => {
@@ -126,6 +200,9 @@ const PathDrawingCanvas: React.FC<PathDrawingCanvasProps> = ({
     });
 
     fabricCanvasRef.current = canvas;
+
+    // 应用网格背景
+    applyGridBackground(canvas);
 
     // 添加缩放和平移功能
     // 鼠标滚轮缩放和触摸板双指手势
@@ -250,49 +327,90 @@ const PathDrawingCanvas: React.FC<PathDrawingCanvasProps> = ({
       e.preventDefault();
       e.stopPropagation();
 
+      // 标记是否已经触发了回调，防止重复调用
+      let callbackTriggered = false;
+
       try {
         const data = e.dataTransfer?.getData("application/json");
         if (data) {
           const imageData = JSON.parse(data);
 
-          // 获取画布相对位置
-          const rect = canvasElement.getBoundingClientRect();
-          const x = e.clientX - rect.left;
-          const y = e.clientY - rect.top;
+          // 验证图片数据的有效性
+          if (imageData && imageData.url) {
+            // 获取画布相对位置
+            const rect = canvasElement.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
 
-          // 创建图片对象
-          FabricImage.fromURL(imageData.url, {
-            crossOrigin: "anonymous",
-          }).then((img) => {
-            if (!img) return;
+            // 立即调用拖拽完成回调，确保百宝箱能够自动关闭
+            // 不依赖图片加载的成功与否
+            if (onImageDropped && !callbackTriggered) {
+              onImageDropped();
+              callbackTriggered = true;
+              console.log("Image drop callback triggered successfully");
+            }
 
-            // 智能缩放
-            const maxSize = 200;
-            const scale = Math.min(
-              maxSize / img.width,
-              maxSize / img.height,
-              0.3
-            );
+            // 创建图片对象
+            FabricImage.fromURL(imageData.url, {
+              crossOrigin: "anonymous",
+            }).then((img) => {
+              if (!img) {
+                console.warn("Failed to load image from URL:", imageData.url);
+                return;
+              }
 
-            img.set({
-              left: x - (img.width * scale) / 2,
-              top: y - (img.height * scale) / 2,
-              scaleX: scale,
-              scaleY: scale,
-              selectable: true,
-              evented: true,
+              // 智能缩放
+              const maxSize = 200;
+              const scale = Math.min(
+                maxSize / img.width,
+                maxSize / img.height,
+                0.3
+              );
+
+              img.set({
+                left: x - (img.width * scale) / 2,
+                top: y - (img.height * scale) / 2,
+                scaleX: scale,
+                scaleY: scale,
+                selectable: true,
+                evented: true,
+              });
+
+              // 设置自定义控制器
+              img.controls.deleteControl = createDeleteControl();
+
+              canvas.add(img);
+              setDroppedImages((prev) => [...prev, img]);
+              canvas.renderAll();
+
+              console.log("Image successfully added to canvas");
+            }).catch((error) => {
+              console.error("Error loading image:", error);
+              // 即使图片加载失败，回调已经在前面调用过了，所以百宝箱仍会关闭
             });
-
-            // 设置自定义控制器
-            img.controls.deleteControl = createDeleteControl();
-
-            canvas.add(img);
-            setDroppedImages((prev) => [...prev, img]);
-            canvas.renderAll();
-          });
+          } else {
+            console.warn("Invalid image data received:", imageData);
+          }
+        } else {
+          console.warn("No drag data received");
         }
       } catch (error) {
         console.error("Error handling drop:", error);
+
+        // 在异常情况下，尝试触发回调作为后备机制
+        // 但只有在之前没有触发过的情况下才触发
+        if (!callbackTriggered && onImageDropped) {
+          try {
+            const rawData = e.dataTransfer?.getData("application/json");
+            if (rawData) {
+              onImageDropped();
+              callbackTriggered = true;
+              console.log("Image drop callback triggered as fallback");
+            }
+          } catch (parseError) {
+            console.error("Error in fallback callback trigger:", parseError);
+          }
+        }
       }
     };
 
@@ -335,6 +453,12 @@ const PathDrawingCanvas: React.FC<PathDrawingCanvasProps> = ({
   useEffect(() => {
     updateCanvasMode();
   }, [showPathDrawing]);
+
+  // 监听网格配置变化，更新网格背景
+  useEffect(() => {
+    if (!fabricCanvasRef.current) return;
+    applyGridBackground(fabricCanvasRef.current);
+  }, [gridConfig, applyGridBackground]);
 
   // 设置背景图片
   useEffect(() => {
@@ -479,7 +603,7 @@ const PathDrawingCanvas: React.FC<PathDrawingCanvasProps> = ({
     const finalPath = new Path(closedPath, {
       stroke: "#ff0000",
       strokeWidth: 2,
-      fill: "rgba(255, 0, 0, 0.1)",
+      fill: "rgba(255, 0, 0, 0)",
       selectable: false,
       evented: false,
     });

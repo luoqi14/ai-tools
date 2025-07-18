@@ -130,19 +130,33 @@ export const TreasureBox: React.FC<TreasureBoxProps> = ({
   ) => {
     e.dataTransfer.setData("application/json", JSON.stringify(image));
     e.dataTransfer.effectAllowed = "copy";
+
+    // 添加拖拽时的视觉反馈
+    const target = e.target as HTMLElement;
+    target.style.opacity = "0.5";
+    target.style.transform = "scale(0.95)";
   };
 
-  if (!isOpen) return null;
+  const handleImageDragEnd = (e: React.DragEvent) => {
+    // 恢复拖拽元素的样式
+    const target = e.target as HTMLElement;
+    target.style.opacity = "1";
+    target.style.transform = "scale(1)";
+  };
 
   return (
     <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0, x: 100 }}
-        animate={{ opacity: 1, x: 0 }}
-        exit={{ opacity: 0, x: 100 }}
-        transition={{ duration: 0.3 }}
-        className="fixed right-4 top-1/2 transform -translate-y-1/2 z-50 w-80 max-h-[80vh] bg-white/80 backdrop-blur-md rounded-2xl shadow-2xl border border-white/20 overflow-hidden"
-      >
+      {isOpen && (
+        <motion.div
+          initial={{ opacity: 0, x: 100 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: 100 }}
+          transition={{
+            duration: 0.3,
+            ease: [0.4, 0.0, 0.2, 1] // 使用更平滑的缓动函数
+          }}
+          className="fixed right-4 top-1/2 transform -translate-y-1/2 z-50 w-80 max-h-[80vh] bg-white/80 backdrop-blur-md rounded-2xl shadow-2xl border border-white/20 overflow-hidden"
+        >
         {/* 头部 */}
         <div className="p-4 border-b border-white/20 bg-gradient-to-r from-blue-50/50 to-purple-50/50">
           <div className="flex items-center justify-between">
@@ -193,9 +207,10 @@ export const TreasureBox: React.FC<TreasureBoxProps> = ({
                     <img
                       src={image.thumbnailUrl || image.url}
                       alt="宝箱图片"
-                      className="w-16 h-16 object-cover rounded-lg cursor-grab active:cursor-grabbing"
+                      className="w-16 h-16 object-cover rounded-lg cursor-grab active:cursor-grabbing transition-all duration-200"
                       draggable
                       onDragStart={(e) => handleImageDragStart(image, e)}
+                      onDragEnd={handleImageDragEnd}
                     />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-gray-800 truncate">
@@ -233,6 +248,7 @@ export const TreasureBox: React.FC<TreasureBoxProps> = ({
           </p>
         </div>
       </motion.div>
+      )}
     </AnimatePresence>
   );
 };

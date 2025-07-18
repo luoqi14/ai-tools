@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import { api, ImageGenerationRequest, API_BASE_URL } from "@/lib/api";
 import { toast } from "sonner";
 import { Textarea } from "@/components/ui/textarea";
@@ -60,6 +60,18 @@ import PathDrawingCanvas from "./PathDrawingCanvas";
 // 导入百宝箱组件
 import TreasureBox from "./TreasureBox";
 
+// 导入历史图片tooltip组件
+import { HistoryImageAnimatedTooltip } from "./HistoryImageAnimatedTooltip";
+
+// 导入预设图片
+import 太阳帽 from "../images/太阳帽.png";
+import 手提包 from "../images/手提包.png";
+import 水晶鞋 from "../images/水晶鞋.png";
+import 沙滩 from "../images/沙滩.png";
+import 自行车 from "../images/自行车.png";
+import 连衣裙 from "../images/连衣裙.png";
+import 项链 from "../images/项链.png";
+
 export default function ImageGenerator() {
   const [prompt, setPrompt] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
@@ -96,6 +108,12 @@ export default function ImageGenerator() {
       prompt: string;
       timestamp: number;
       file?: File;
+      originalUrl?: string; // 保存原始URL用于获取文件
+      sourceImageId?: string; // 生成此图片时使用的源图片ID
+      originalUserInput?: string; // 用户原始输入
+      optimizedPrompt?: string; // 优化后的提示词
+      chinesePrompt?: string; // 中文提示词
+      optimizationReason?: string; // 优化原因
     }>
   >([]);
 
@@ -105,6 +123,11 @@ export default function ImageGenerator() {
 
   // 路径绘制状态
   const [showPathDrawing, setShowPathDrawing] = useState(false);
+
+  // 网格状态 - 默认显示，不需要切换
+  const showGrid = true;
+
+
 
   // 百宝箱状态
   const [showTreasureBox, setShowTreasureBox] = useState(false);
@@ -118,6 +141,77 @@ export default function ImageGenerator() {
     }>
   >([]);
 
+  // 预设图片加载状态
+  const hasLoadedPresetImages = useRef(false);
+
+  // 生成缩略图的通用函数
+  const generateThumbnail = useCallback(
+    (imageUrl: string, maxSize = 200, quality = 0.8): Promise<string> => {
+      return new Promise((resolve, reject) => {
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+        const img = new Image();
+
+        img.onload = () => {
+          // 计算缩略图尺寸，保持宽高比
+          const { width, height } = img;
+          let newWidth = width;
+          let newHeight = height;
+
+          if (width > height) {
+            if (width > maxSize) {
+              newWidth = maxSize;
+              newHeight = (height * maxSize) / width;
+            }
+          } else {
+            if (height > maxSize) {
+              newHeight = maxSize;
+              newWidth = (width * maxSize) / height;
+            }
+          }
+
+          canvas.width = newWidth;
+          canvas.height = newHeight;
+
+          // 绘制缩略图
+          ctx?.drawImage(img, 0, 0, newWidth, newHeight);
+
+          // 转换为blob URL，使用JPEG格式和指定质量
+          canvas.toBlob(
+            (blob) => {
+              if (blob) {
+                const thumbnailUrl = URL.createObjectURL(blob);
+                resolve(thumbnailUrl);
+              } else {
+                reject(new Error("Failed to generate thumbnail"));
+              }
+            },
+            "image/jpeg",
+            quality
+          );
+        };
+
+        img.onerror = () => {
+          reject(new Error("Failed to load image for thumbnail generation"));
+        };
+
+        img.src = imageUrl;
+      });
+    },
+    []
+  );
+
+  // 预设图片数据
+  const presetImages = [
+    { name: "太阳帽.png", src: 太阳帽.src },
+    { name: "手提包.png", src: 手提包.src },
+    { name: "水晶鞋.png", src: 水晶鞋.src },
+    { name: "沙滩.png", src: 沙滩.src },
+    { name: "自行车.png", src: 自行车.src },
+    { name: "连衣裙.png", src: 连衣裙.src },
+    { name: "项链.png", src: 项链.src },
+  ];
+
   // 计算当前图片
   const getCurrentImage = (): string | null => {
     if (!currentImageId || !historyImages.length) return null;
@@ -130,7 +224,7 @@ export default function ImageGenerator() {
     return historyImages[currentIndex].url;
   };
 
-  // 计算前一张图片
+  // 计算前一张图片（保留用于向后兼容）
   const getPreviousImage = (): string | null => {
     if (!currentImageId || !historyImages.length) return null;
 
@@ -141,6 +235,17 @@ export default function ImageGenerator() {
 
     // 返回前一张图片的URL
     return historyImages[currentIndex - 1].url;
+  };
+
+  // 获取当前图片的源图片（用于比较功能）
+  const getSourceImage = (): string | null => {
+    if (!currentImageId || !historyImages.length) return null;
+
+    const currentImage = historyImages.find(img => img.id === currentImageId);
+    if (!currentImage || !currentImage.sourceImageId) return null;
+
+    const sourceImage = historyImages.find(img => img.id === currentImage.sourceImageId);
+    return sourceImage ? sourceImage.url : null;
   };
 
   const showToast = (
@@ -157,7 +262,119 @@ export default function ImageGenerator() {
     }
   };
 
-  const handleImageUpload = useCallback((files: File[]) => {
+  // 加载预设图片到百宝箱
+  const loadPresetImages = useCallback(async () => {
+    if (hasLoadedPresetImages.current) return;
+
+    try {
+      const loadedImages = await Promise.all(
+        presetImages.map(async (preset) => {
+          try {
+            // 获取图片数据
+            const response = await fetch(preset.src);
+            const blob = await response.blob();
+
+            // 创建File对象
+            const file = new File([blob], preset.name, { type: blob.type });
+
+            // 生成缩略图
+            const canvas = document.createElement("canvas");
+            const ctx = canvas.getContext("2d");
+            const img = new Image();
+
+            return new Promise<{
+              id: string;
+              url: string;
+              thumbnailUrl?: string;
+              file: File;
+              timestamp: number;
+            }>((resolve) => {
+              img.onload = () => {
+                // 计算缩略图尺寸
+                const maxSize = 200;
+                const { width, height } = img;
+                let newWidth = width;
+                let newHeight = height;
+
+                if (width > height) {
+                  if (width > maxSize) {
+                    newWidth = maxSize;
+                    newHeight = (height * maxSize) / width;
+                  }
+                } else {
+                  if (height > maxSize) {
+                    newHeight = maxSize;
+                    newWidth = (width * maxSize) / height;
+                  }
+                }
+
+                canvas.width = newWidth;
+                canvas.height = newHeight;
+                ctx?.drawImage(img, 0, 0, newWidth, newHeight);
+
+                // 生成缩略图URL
+                canvas.toBlob((thumbnailBlob) => {
+                  const thumbnailUrl = thumbnailBlob
+                    ? URL.createObjectURL(thumbnailBlob)
+                    : undefined;
+
+                  resolve({
+                    id: `preset-${Date.now()}-${Math.random()}`,
+                    url: preset.src,
+                    thumbnailUrl,
+                    file,
+                    timestamp: Date.now(),
+                  });
+                }, "image/png");
+              };
+
+              img.onerror = () => {
+                // 如果缩略图生成失败，仍然添加原图
+                resolve({
+                  id: `preset-${Date.now()}-${Math.random()}`,
+                  url: preset.src,
+                  file,
+                  timestamp: Date.now(),
+                });
+              };
+
+              img.src = preset.src;
+            });
+          } catch (error) {
+            console.error(`加载预设图片 ${preset.name} 失败:`, error);
+            return null;
+          }
+        })
+      );
+
+      // 过滤掉加载失败的图片
+      const validImages = loadedImages.filter(Boolean) as Array<{
+        id: string;
+        url: string;
+        thumbnailUrl?: string;
+        file: File;
+        timestamp: number;
+      }>;
+
+      if (validImages.length > 0) {
+        setTreasureBoxImages(validImages);
+        hasLoadedPresetImages.current = true;
+        showToast("success", "预设图片已加载", `成功加载 ${validImages.length} 张预设图片`);
+      }
+    } catch (error) {
+      console.error("加载预设图片失败:", error);
+      showToast("error", "预设图片加载失败", "请稍后重试");
+    }
+  }, [presetImages]);
+
+  // 监听百宝箱打开状态，首次打开时加载预设图片
+  useEffect(() => {
+    if (showTreasureBox && treasureBoxImages.length === 0 && !hasLoadedPresetImages.current) {
+      loadPresetImages();
+    }
+  }, [showTreasureBox, treasureBoxImages.length, loadPresetImages]);
+
+  const handleImageUpload = useCallback(async (files: File[]) => {
     const file = files[0];
     if (file) {
       if (file.size > 10 * 1024 * 1024) {
@@ -169,30 +386,51 @@ export default function ImageGenerator() {
         return;
       }
       const reader = new FileReader();
-      reader.onload = (e) => {
+      reader.onload = async (e) => {
         if (e.target?.result) {
           const imageUrl = e.target.result as string;
 
-          // 添加上传的图片到历史记录
-          const newHistoryItem = {
-            id: Date.now().toString(),
-            url: imageUrl,
-            prompt: "上传的图片",
-            timestamp: Date.now(),
-            file: file,
-          };
-          setHistoryImages((prev) => [...prev.slice(-19), newHistoryItem]);
-          setCurrentImageId(newHistoryItem.id);
+          try {
+            // 生成缩略图
+            const thumbnailUrl = await generateThumbnail(imageUrl);
+
+            // 添加上传的图片到历史记录
+            const newHistoryItem = {
+              id: Date.now().toString(),
+              url: imageUrl,
+              thumbnailUrl: thumbnailUrl,
+              prompt: "上传的图片",
+              timestamp: Date.now(),
+              file: file,
+            };
+            setHistoryImages((prev) => [...prev.slice(-19), newHistoryItem]);
+            setCurrentImageId(newHistoryItem.id);
+          } catch (error) {
+            console.error("生成缩略图失败:", error);
+            // 如果缩略图生成失败，仍然添加原图
+            const newHistoryItem = {
+              id: Date.now().toString(),
+              url: imageUrl,
+              prompt: "上传的图片",
+              timestamp: Date.now(),
+              file: file,
+            };
+            setHistoryImages((prev) => [...prev.slice(-19), newHistoryItem]);
+            setCurrentImageId(newHistoryItem.id);
+          }
         }
       };
       reader.readAsDataURL(file);
     }
-  }, []);
+  }, [generateThumbnail]);
 
   const pollTaskStatus = async (taskId: string) => {
     const maxAttempts = 60;
     let attempts = 0;
     let pollingCancelled = false;
+
+    // 捕获生成时的源图片ID（如果存在）
+    const sourceImageIdAtGeneration = currentImageId;
 
     const poll = async () => {
       if (pollingCancelled || attempts >= maxAttempts) {
@@ -263,17 +501,57 @@ export default function ImageGenerator() {
         // 添加到历史记录
         if (taskData.result?.image_url) {
           // 先获取blob URL，然后统一使用blob URL保存到历史记录
-          getBlobUrl(taskData.result.image_url).then((blobUrl) => {
-            const newHistoryItem = {
-              id: Date.now().toString(),
-              url: blobUrl, // 统一保存blob URL用于显示
-              originalUrl: taskData.result!.image_url, // 保存原始URL用于获取文件
-              prompt: originalUserInput || prompt,
-              timestamp: Date.now(),
-            };
-            setHistoryImages((prev) => [...prev.slice(-19), newHistoryItem]); // 保留最近20张图片，新的在后
-            selectHistoryImage(newHistoryItem);
-            setCurrentImageId(newHistoryItem.id);
+          getBlobUrl(taskData.result.image_url).then(async (blobUrl) => {
+            try {
+              // 生成缩略图
+              const thumbnailUrl = await generateThumbnail(blobUrl);
+
+              // 获取选择的提示词信息
+              const selectedInfo = (window as any).selectedPromptInfo;
+
+              const newHistoryItem = {
+                id: Date.now().toString(),
+                url: blobUrl, // 统一保存blob URL用于显示
+                thumbnailUrl: thumbnailUrl, // 添加缩略图URL
+                originalUrl: taskData.result!.image_url, // 保存原始URL用于获取文件
+                prompt: selectedInfo?.optimizedPrompt || originalUserInput || prompt,
+                timestamp: Date.now(),
+                sourceImageId: sourceImageIdAtGeneration || undefined, // 记录源图片ID
+                originalUserInput: selectedInfo?.originalUserInput || originalUserInput,
+                optimizedPrompt: selectedInfo?.optimizedPrompt,
+                chinesePrompt: selectedInfo?.chinesePrompt, // 保存中文提示词
+                optimizationReason: selectedInfo?.optimizationReason,
+              };
+
+              // 清除临时保存的信息
+              delete (window as any).selectedPromptInfo;
+              setHistoryImages((prev) => [...prev.slice(-19), newHistoryItem]); // 保留最近20张图片，新的在后
+              selectHistoryImage(newHistoryItem);
+              setCurrentImageId(newHistoryItem.id);
+            } catch (error) {
+              console.error("生成缩略图失败:", error);
+              // 如果缩略图生成失败，仍然添加原图
+              const selectedInfo = (window as any).selectedPromptInfo;
+
+              const newHistoryItem = {
+                id: Date.now().toString(),
+                url: blobUrl, // 统一保存blob URL用于显示
+                originalUrl: taskData.result!.image_url, // 保存原始URL用于获取文件
+                prompt: selectedInfo?.optimizedPrompt || originalUserInput || prompt,
+                timestamp: Date.now(),
+                sourceImageId: sourceImageIdAtGeneration || undefined, // 记录源图片ID
+                originalUserInput: selectedInfo?.originalUserInput || originalUserInput,
+                optimizedPrompt: selectedInfo?.optimizedPrompt,
+                chinesePrompt: selectedInfo?.chinesePrompt, // 保存中文提示词
+                optimizationReason: selectedInfo?.optimizationReason,
+              };
+
+              // 清除临时保存的信息
+              delete (window as any).selectedPromptInfo;
+              setHistoryImages((prev) => [...prev.slice(-19), newHistoryItem]); // 保留最近20张图片，新的在后
+              selectHistoryImage(newHistoryItem);
+              setCurrentImageId(newHistoryItem.id);
+            }
           });
         }
       } else if (taskData.status === "failed") {
@@ -309,6 +587,7 @@ export default function ImageGenerator() {
   // 百宝箱相关函数
   const toggleTreasureBox = () => {
     const newShowTreasureBox = !showTreasureBox;
+    console.log("toggleTreasureBox: changing from", showTreasureBox, "to", newShowTreasureBox);
     setShowTreasureBox(newShowTreasureBox);
   };
 
@@ -338,6 +617,25 @@ export default function ImageGenerator() {
     setTreasureBoxImages((prev) => prev.filter((img) => img.id !== id));
     showToast("info", "图片已删除", "已从百宝箱中移除");
   }, []);
+
+  // 处理图片拖拽完成，自动关闭百宝箱
+  const handleImageDropped = useCallback(() => {
+    console.log("handleImageDropped called, showTreasureBox:", showTreasureBox);
+
+    // 使用函数式更新来避免闭包陈旧值问题
+    setShowTreasureBox((currentShowTreasureBox) => {
+      console.log("setShowTreasureBox callback, currentShowTreasureBox:", currentShowTreasureBox);
+
+      if (currentShowTreasureBox) {
+        // 添加轻微延迟，让用户看到拖拽完成的效果
+        setTimeout(() => {
+          showToast("success", "图片已添加到画布", "百宝箱已自动关闭");
+        }, 300);
+        return false; // 关闭百宝箱
+      }
+      return currentShowTreasureBox; // 保持当前状态
+    });
+  }, []); // 移除依赖项，使用函数式更新
 
   // 拖拽处理现在由PathDrawingCanvas内部管理
 
@@ -448,6 +746,22 @@ export default function ImageGenerator() {
   };
 
   const handlePromptSelect = (selectedPrompt: string) => {
+    // 找到选择的提示词的详细信息
+    const selectedPromptInfo = generatedPrompts.find(p =>
+      p.chinese === selectedPrompt || p.english === selectedPrompt
+    );
+
+    // 保存选择的提示词信息，用于后续保存到历史记录
+    if (selectedPromptInfo) {
+      // 将选择的提示词信息临时保存，在图片生成成功后使用
+      (window as any).selectedPromptInfo = {
+        originalUserInput,
+        optimizedPrompt: selectedPrompt,
+        chinesePrompt: selectedPromptInfo.chinese, // 保存中文提示词
+        optimizationReason: selectedPromptInfo.reason
+      };
+    }
+
     generateImageWithPrompt(selectedPrompt);
   };
 
@@ -589,7 +903,7 @@ export default function ImageGenerator() {
   };
 
   return (
-    <div className="h-screen bg-gradient-to-br from-slate-50 to-slate-100 relative overflow-hidden">
+    <div className="h-screen bg-gradient-to-br from-slate-50 to-slate-100 relative">
       {/* 主要内容区域 - 图片展示 */}
       <div className="flex items-center justify-center h-full">
         <div className="w-full h-full flex items-center justify-center">
@@ -606,7 +920,7 @@ export default function ImageGenerator() {
           {isCompareMode && (
             <div className="relative w-full h-[calc(100vh-332px)] flex items-center justify-center self-start pt-[16px]">
               <Compare
-                firstImage={getPreviousImage()!}
+                firstImage={getSourceImage()!}
                 secondImage={getCurrentImage()!}
                 firstImageClassName="object-contain"
                 secondImageClassname="object-contain"
@@ -623,15 +937,23 @@ export default function ImageGenerator() {
             <PathDrawingCanvas
               backgroundImage={getCurrentImage() || undefined}
               onPathComplete={handlePathComplete}
+              onImageDropped={handleImageDropped}
               showPathDrawing={showPathDrawing}
               className="absolute inset-0"
+              gridConfig={{
+                enabled: showGrid,
+                size: 25,
+                color: "#e5e5e5",
+                opacity: 0.5,
+                lineWidth: 1,
+              }}
             />
           )}
         </div>
       </div>
 
       {/* 底部输入区域 */}
-      <div className="absolute bottom-0 left-0 right-0 p-6 pb-8 backdrop-blur-md bg-white/20 border-t border-white/30">
+      <div className="absolute bottom-0 left-0 right-0 p-6 pb-8">
         <div className="max-w-4xl mx-auto mb-4">
           {/* 历史图片展示 */}
           {historyImages.length > 0 && (
@@ -650,26 +972,27 @@ export default function ImageGenerator() {
                         key={item.id}
                         className="pl-2 md:pl-4 basis-auto"
                       >
-                        <div
-                          className={`relative w-16 h-16 rounded-lg overflow-hidden cursor-pointer border-2 transition-all ${
-                            currentImageId === item.id
-                              ? "border-purple-500 ring-2 ring-purple-200"
-                              : "border-gray-200 hover:border-gray-300"
-                          }`}
-                          onClick={() => selectHistoryImage(item)}
-                          title={`${item.prompt}`}
-                        >
-                          <img
-                            src={item.url} // 现在历史记录中的URL都是blob URL，直接使用
-                            alt={`历史图片 ${item.id}`}
-                            className="w-full h-full object-cover hover:scale-105"
-                          />
-                          {currentImageId === item.id && (
-                            <div className="absolute inset-0 bg-purple-500/10 flex items-center justify-center">
-                              <div className="w-2 h-2 bg-purple-500 rounded-full shadow-lg"></div>
-                            </div>
-                          )}
-                        </div>
+                        <HistoryImageAnimatedTooltip imageData={item}>
+                          <div
+                            className={`relative w-16 h-16 rounded-lg cursor-pointer border-2 transition-all ${
+                              currentImageId === item.id
+                                ? "border-purple-500 ring-2 ring-purple-200"
+                                : "border-gray-200 hover:border-gray-300"
+                            }`}
+                            onClick={() => selectHistoryImage(item)}
+                          >
+                            <img
+                              src={item.thumbnailUrl || item.url} // 优先使用缩略图，如果不存在则使用原图
+                              alt={`历史图片 ${item.id}`}
+                              className="w-full h-full object-cover hover:scale-105"
+                            />
+                            {currentImageId === item.id && (
+                              <div className="absolute inset-0 bg-purple-500/10 flex items-center justify-center">
+                                <div className="w-2 h-2 bg-purple-500 rounded-full shadow-lg"></div>
+                              </div>
+                            )}
+                          </div>
+                        </HistoryImageAnimatedTooltip>
                       </CarouselItem>
                     ))}
                   </CarouselContent>
@@ -889,8 +1212,8 @@ export default function ImageGenerator() {
                   </Button>
                 ),
               },
-              // 比较按钮
-              ...(getPreviousImage() && getCurrentImage()
+              // 比较按钮 - 只有当前图片有源图片时才显示
+              ...(getSourceImage() && getCurrentImage()
                 ? [
                     {
                       id: "compare",
@@ -950,8 +1273,8 @@ export default function ImageGenerator() {
               }
               return true;
             })}
-            desktopClassName=""
-            mobileClassName=""
+            desktopClassName="!bg-transparent border-0 shadow-none"
+            mobileClassName="!bg-transparent border-0 shadow-none"
           />
         </div>
       </div>
@@ -968,7 +1291,10 @@ export default function ImageGenerator() {
       {/* 百宝箱 */}
       <TreasureBox
         isOpen={showTreasureBox}
-        onClose={() => setShowTreasureBox(false)}
+        onClose={() => {
+          console.log("TreasureBox onClose called, closing treasure box");
+          setShowTreasureBox(false);
+        }}
         images={treasureBoxImages}
         onImageUpload={handleTreasureBoxImageUpload}
         onImageRemove={handleTreasureBoxImageRemove}

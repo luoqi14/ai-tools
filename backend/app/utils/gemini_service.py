@@ -20,9 +20,6 @@ class GeminiService:
         Returns:
             List[Dict[str, Any]]: 包含3条提示词的列表，每条包含chinese、english、reason字段
         """
-        print(f"user_input: {user_input}")
-        print(f"input_image: {input_image}")
-        print(f"input_image_mime_type: {input_image_mime_type}")
         # 使用用户提供的完整原始提示词
         system_instruction = """
 # FLUX.1 Kontext 提示词生成助手
@@ -224,7 +221,6 @@ class GeminiService:
             
             # 解析JSON响应
             result = json.loads(response.text)
-            print(f"result: {result}")
             prompts_data = result.get('prompts', [])
             
             # 验证和处理提示词数据
