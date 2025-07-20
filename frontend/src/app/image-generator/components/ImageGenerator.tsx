@@ -450,7 +450,7 @@ export default function ImageGenerator() {
         setTreasureBoxImages(validImages);
         hasLoadedPresetImages.current = true;
       }
-    } catch (error) {
+    } catch {
       showToast("error", "预设图片加载失败", "请稍后重试");
     } finally {
       setIsLoadingPresetImages(false);
