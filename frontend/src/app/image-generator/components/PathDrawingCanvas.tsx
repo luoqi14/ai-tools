@@ -2,6 +2,7 @@
 
 import React, { useRef, useEffect, useState, useCallback } from "react";
 import { Canvas, Path, FabricImage, Control, util, Point } from "fabric";
+import { useDroppable } from "@dnd-kit/core";
 
 interface GridConfig {
   enabled: boolean;
@@ -44,6 +45,97 @@ const PathDrawingCanvas: React.FC<PathDrawingCanvasProps> = ({
   const [currentPath, setCurrentPath] = useState<Path | null>(null);
   const [pathPoints, setPathPoints] = useState<string>("");
   const [, setDroppedImages] = useState<FabricImage[]>([]);
+
+  // 使用dnd-kit的useDroppable hook
+  const { setNodeRef } = useDroppable({
+    id: 'canvas-drop-zone',
+    data: {
+      accepts: ['treasure-image'],
+    },
+  });
+
+  // 处理dnd-kit拖拽数据的函数
+  const handleDndKitDrop = useCallback((imageData: { id: string; url: string; thumbnailUrl?: string; file: File; timestamp: number }, dropPosition: { x: number; y: number }) => {
+    if (!fabricCanvasRef.current) {
+      console.error("Canvas not initialized");
+      return;
+    }
+
+    const canvas = fabricCanvasRef.current;
+
+    // 立即调用拖拽完成回调，确保百宝箱能够自动关闭
+    if (onImageDropped) {
+      onImageDropped();
+    }
+
+    // 验证图片数据的有效性
+    if (!imageData || !imageData.url) {
+      console.warn("Invalid image data received:", imageData);
+      return;
+    }
+
+    // 添加加载超时处理
+    const loadTimeout = setTimeout(() => {
+      console.warn("Image loading timeout for URL:", imageData.url);
+    }, 10000); // 10秒超时
+
+    // 创建图片对象
+    FabricImage.fromURL(imageData.url, {
+      crossOrigin: "anonymous",
+    }).then((img) => {
+      clearTimeout(loadTimeout);
+
+      if (!img) {
+        console.warn("Failed to load image from URL:", imageData.url);
+        return;
+      }
+
+      // 验证图片尺寸
+      if (img.width <= 0 || img.height <= 0) {
+        console.warn("Invalid image dimensions:", img.width, img.height);
+        return;
+      }
+
+      // 智能缩放
+      const maxSize = 200;
+      const scale = Math.min(
+        maxSize / img.width,
+        maxSize / img.height,
+        0.3
+      );
+
+      // 确保缩放值有效
+      const finalScale = Math.max(0.1, Math.min(scale, 2.0));
+
+      img.set({
+        left: dropPosition.x - (img.width * finalScale) / 2,
+        top: dropPosition.y - (img.height * finalScale) / 2,
+        scaleX: finalScale,
+        scaleY: finalScale,
+        selectable: true,
+        evented: true,
+      });
+
+      // 设置自定义控制器
+      try {
+        img.controls.deleteControl = createDeleteControl();
+      } catch (controlError) {
+        console.warn("Failed to set delete control:", controlError);
+      }
+
+      canvas.add(img);
+      setDroppedImages((prev) => [...prev, img]);
+      canvas.renderAll();
+    }).catch((error) => {
+      clearTimeout(loadTimeout);
+      console.error("Error loading image:", error);
+
+      // 可以在这里添加用户友好的错误提示
+      if (typeof window !== 'undefined' && (window as unknown as { showToast?: (type: string, title: string, message: string) => void }).showToast) {
+        (window as unknown as { showToast: (type: string, title: string, message: string) => void }).showToast("error", "图片加载失败", "请尝试重新上传图片");
+      }
+    });
+  }, [onImageDropped]);
 
   // 创建网格背景图案
   const createGridDataURL = useCallback(() => {
@@ -131,7 +223,7 @@ const PathDrawingCanvas: React.FC<PathDrawingCanvasProps> = ({
       offsetY: -16,
       offsetX: 16,
       cursorStyle: "pointer",
-      mouseUpHandler: (eventData, transform) => {
+      mouseUpHandler: (_eventData, transform) => {
         const canvas = transform.target.canvas;
         const target = transform.target;
 
@@ -272,7 +364,130 @@ const PathDrawingCanvas: React.FC<PathDrawingCanvasProps> = ({
       }
     });
 
-    // 触摸板双指手势已通过mouse:wheel事件处理，无需额外的触摸事件
+    // 移动端触摸手势支持 - 使用原生DOM事件
+    let lastTouchDistance = 0;
+    let lastTouchCenter = { x: 0, y: 0 };
+    let isTouchGesture = false;
+    const upperCanvasElement = canvas.upperCanvasEl;
+
+    // 计算两点间距离
+    const getTouchDistance = (touch1: Touch, touch2: Touch) => {
+      const dx = touch1.clientX - touch2.clientX;
+      const dy = touch1.clientY - touch2.clientY;
+      return Math.sqrt(dx * dx + dy * dy);
+    };
+
+    // 计算两点中心
+    const getTouchCenter = (touch1: Touch, touch2: Touch) => {
+      return {
+        x: (touch1.clientX + touch2.clientX) / 2,
+        y: (touch1.clientY + touch2.clientY) / 2,
+      };
+    };
+
+    // 触摸开始事件
+    const handleTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        console.log('双指触摸开始 - upper-canvas');
+
+        const touch1 = e.touches[0];
+        const touch2 = e.touches[1];
+
+        lastTouchDistance = getTouchDistance(touch1, touch2);
+        lastTouchCenter = getTouchCenter(touch1, touch2);
+        isTouchGesture = true;
+
+        // 暂时禁用Fabric.js的交互
+        canvas.selection = false;
+        if (canvas.isDrawingMode) {
+          canvas.isDrawingMode = false;
+        }
+      }
+    };
+
+    // 触摸移动事件
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 2 && isTouchGesture) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const touch1 = e.touches[0];
+        const touch2 = e.touches[1];
+
+        const currentDistance = getTouchDistance(touch1, touch2);
+        const currentCenter = getTouchCenter(touch1, touch2);
+
+        // 缩放处理
+        if (lastTouchDistance > 0) {
+          const scale = currentDistance / lastTouchDistance;
+
+          // 缩放阈值，避免过于敏感
+          if (Math.abs(scale - 1) > 0.02) {
+            let zoom = canvas.getZoom();
+            zoom *= scale;
+
+            // 限制缩放范围
+            if (zoom > 20) zoom = 20;
+            if (zoom < 0.1) zoom = 0.1;
+
+            // 获取canvas相对位置
+            const rect = upperCanvasElement.getBoundingClientRect();
+            const centerPoint = new Point(
+              currentCenter.x - rect.left,
+              currentCenter.y - rect.top
+            );
+
+            canvas.zoomToPoint(centerPoint, zoom);
+          }
+        }
+
+        // 平移处理
+        if (lastTouchCenter.x !== 0 && lastTouchCenter.y !== 0) {
+          const deltaX = currentCenter.x - lastTouchCenter.x;
+          const deltaY = currentCenter.y - lastTouchCenter.y;
+
+          // 平移阈值，避免过于敏感
+          if (Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3) {
+            const vpt = canvas.viewportTransform;
+            if (vpt) {
+              vpt[4] += deltaX;
+              vpt[5] += deltaY;
+              canvas.requestRenderAll();
+            }
+          }
+        }
+
+        lastTouchDistance = currentDistance;
+        lastTouchCenter = currentCenter;
+      }
+    };
+
+    // 触摸结束事件
+    const handleTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length < 2 && isTouchGesture) {
+        // 重新启用Fabric.js的交互
+        canvas.selection = true;
+
+        // 如果之前在绘制模式，重新启用
+        if (showPathDrawing) {
+          canvas.isDrawingMode = true;
+        }
+
+        // 重置状态
+        lastTouchDistance = 0;
+        lastTouchCenter = { x: 0, y: 0 };
+        isTouchGesture = false;
+      }
+    };
+
+    // 添加触摸事件监听器到 upper-canvas
+    upperCanvasElement.addEventListener('touchstart', handleTouchStart, { passive: false });
+    upperCanvasElement.addEventListener('touchmove', handleTouchMove, { passive: false });
+    upperCanvasElement.addEventListener('touchend', handleTouchEnd, { passive: false });
+    upperCanvasElement.addEventListener('touchcancel', handleTouchEnd, { passive: false });
 
     // 监听容器大小变化
     const resizeObserver = new ResizeObserver(() => {
@@ -317,111 +532,16 @@ const PathDrawingCanvas: React.FC<PathDrawingCanvasProps> = ({
       resizeObserver.observe(container);
     }
 
-    // 监听拖拽事件
-    const handleDragOver = (e: DragEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-    };
-
-    const handleDrop = (e: DragEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-
-      // 标记是否已经触发了回调，防止重复调用
-      let callbackTriggered = false;
-
-      try {
-        const data = e.dataTransfer?.getData("application/json");
-        if (data) {
-          const imageData = JSON.parse(data);
-
-          // 验证图片数据的有效性
-          if (imageData && imageData.url) {
-            // 获取画布相对位置
-            const rect = canvasElement.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
-
-            // 立即调用拖拽完成回调，确保百宝箱能够自动关闭
-            // 不依赖图片加载的成功与否
-            if (onImageDropped && !callbackTriggered) {
-              onImageDropped();
-              callbackTriggered = true;
-              console.log("Image drop callback triggered successfully");
-            }
-
-            // 创建图片对象
-            FabricImage.fromURL(imageData.url, {
-              crossOrigin: "anonymous",
-            }).then((img) => {
-              if (!img) {
-                console.warn("Failed to load image from URL:", imageData.url);
-                return;
-              }
-
-              // 智能缩放
-              const maxSize = 200;
-              const scale = Math.min(
-                maxSize / img.width,
-                maxSize / img.height,
-                0.3
-              );
-
-              img.set({
-                left: x - (img.width * scale) / 2,
-                top: y - (img.height * scale) / 2,
-                scaleX: scale,
-                scaleY: scale,
-                selectable: true,
-                evented: true,
-              });
-
-              // 设置自定义控制器
-              img.controls.deleteControl = createDeleteControl();
-
-              canvas.add(img);
-              setDroppedImages((prev) => [...prev, img]);
-              canvas.renderAll();
-
-              console.log("Image successfully added to canvas");
-            }).catch((error) => {
-              console.error("Error loading image:", error);
-              // 即使图片加载失败，回调已经在前面调用过了，所以百宝箱仍会关闭
-            });
-          } else {
-            console.warn("Invalid image data received:", imageData);
-          }
-        } else {
-          console.warn("No drag data received");
-        }
-      } catch (error) {
-        console.error("Error handling drop:", error);
-
-        // 在异常情况下，尝试触发回调作为后备机制
-        // 但只有在之前没有触发过的情况下才触发
-        if (!callbackTriggered && onImageDropped) {
-          try {
-            const rawData = e.dataTransfer?.getData("application/json");
-            if (rawData) {
-              onImageDropped();
-              callbackTriggered = true;
-              console.log("Image drop callback triggered as fallback");
-            }
-          } catch (parseError) {
-            console.error("Error in fallback callback trigger:", parseError);
-          }
-        }
-      }
-    };
-
-    const upperCanvas = canvas.upperCanvasEl;
-    upperCanvas.addEventListener("dragover", handleDragOver);
-    upperCanvas.addEventListener("drop", handleDrop);
+    // HTML5拖拽事件处理已移除，现在使用dnd-kit的useDroppable hook
 
     return () => {
+      // 清理触摸事件监听器
+      upperCanvasElement.removeEventListener('touchstart', handleTouchStart);
+      upperCanvasElement.removeEventListener('touchmove', handleTouchMove);
+      upperCanvasElement.removeEventListener('touchend', handleTouchEnd);
+      upperCanvasElement.removeEventListener('touchcancel', handleTouchEnd);
+
       resizeObserver.disconnect();
-      upperCanvas.removeEventListener("dragover", handleDragOver);
-      upperCanvas.removeEventListener("drop", handleDrop);
       canvas.dispose();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -758,6 +878,7 @@ const PathDrawingCanvas: React.FC<PathDrawingCanvasProps> = ({
         clearDroppedImages,
         hasDroppedImages,
         getCompositeImageData,
+        handleDndKitDrop, // 添加dnd-kit拖拽处理函数
       };
 
       (
@@ -771,10 +892,14 @@ const PathDrawingCanvas: React.FC<PathDrawingCanvasProps> = ({
     clearDroppedImages,
     hasDroppedImages,
     getCompositeImageData,
+    handleDndKitDrop,
   ]);
 
   return (
-    <div className={`relative w-full h-full ${className}`}>
+    <div
+      ref={setNodeRef}
+      className={`relative w-full h-full ${className}`}
+    >
       <canvas
         ref={canvasRef}
         className="w-full h-full"

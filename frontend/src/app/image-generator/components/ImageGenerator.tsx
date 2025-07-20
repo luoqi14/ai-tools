@@ -3,6 +3,10 @@
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import { api, ImageGenerationRequest, API_BASE_URL } from "@/lib/api";
 import { toast } from "sonner";
+import { DndContext, DragEndEvent, DragOverlay, useSensors, useSensor, PointerSensor, TouchSensor, DragStartEvent, DragMoveEvent } from "@dnd-kit/core";
+import { performanceMonitor, DragDropErrorHandler, initializeDragDropSystem } from "@/lib/dragDropUtils";
+
+
 import { Textarea } from "@/components/ui/textarea";
 
 // 定义选择的提示词信息类型
@@ -91,6 +95,70 @@ export default function ImageGenerator() {
   const [prompt, setPrompt] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
 
+  // 初始化拖拽系统
+  useEffect(() => {
+    const { success, warnings } = initializeDragDropSystem();
+    if (!success) {
+      console.error("拖拽系统初始化失败");
+    }
+    if (warnings.length > 0) {
+      console.warn("拖拽系统警告:", warnings);
+    }
+
+    // 添加全局鼠标和触摸位置跟踪
+    const handleMouseMove = (e: MouseEvent) => {
+      mousePositionRef.current = { x: e.clientX, y: e.clientY };
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      // 使用第一个触摸点的位置
+      if (e.touches.length > 0) {
+        const touch = e.touches[0];
+        mousePositionRef.current = { x: touch.clientX, y: touch.clientY };
+        // 保存到全局变量供drop时使用
+        (window as any).lastPointerEvent = e;
+      }
+    };
+
+    const handleTouchEnd = (e: TouchEvent) => {
+      // 保存touchend事件，包含最后的触摸位置
+      (window as any).lastPointerEvent = e;
+    };
+
+    const handleMouseMoveGlobal = (e: MouseEvent) => {
+      handleMouseMove(e);
+      // 保存到全局变量供drop时使用
+      (window as any).lastPointerEvent = e;
+    };
+
+    document.addEventListener('mousemove', handleMouseMoveGlobal);
+    document.addEventListener('touchmove', handleTouchMove, { passive: true });
+    document.addEventListener('touchend', handleTouchEnd, { passive: true });
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMoveGlobal);
+      document.removeEventListener('touchmove', handleTouchMove);
+      document.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, []);
+
+  // 配置dnd-kit传感器，优化移动端体验
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8, // 需要拖拽8px才激活
+        tolerance: 5, // 容错范围
+        delay: 100, // 延迟100ms激活，避免与滚动冲突
+      },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 250, // 移动端延迟250ms激活，避免与滚动冲突
+        tolerance: 5,
+      },
+    })
+  );
+
   // 参数状态
   const [aspectRatio, setAspectRatio] = useState("auto");
   const [outputFormat, setOutputFormat] = useState("jpeg");
@@ -158,6 +226,7 @@ export default function ImageGenerator() {
 
   // 预设图片加载状态
   const hasLoadedPresetImages = useRef(false);
+  const [isLoadingPresetImages, setIsLoadingPresetImages] = useState(false);
 
   // 生成缩略图的通用函数
   const generateThumbnail = useCallback(
@@ -270,6 +339,7 @@ export default function ImageGenerator() {
   const loadPresetImages = useCallback(async () => {
     if (hasLoadedPresetImages.current) return;
 
+    setIsLoadingPresetImages(true);
     try {
       const loadedImages = await Promise.all(
         presetImages.map(async (preset) => {
@@ -368,6 +438,8 @@ export default function ImageGenerator() {
     } catch (error) {
       console.error("加载预设图片失败:", error);
       showToast("error", "预设图片加载失败", "请稍后重试");
+    } finally {
+      setIsLoadingPresetImages(false);
     }
   }, [presetImages]);
 
@@ -476,31 +548,10 @@ export default function ImageGenerator() {
         // 生成成功后重置所有状态
         if (showPathDrawing) {
           setShowPathDrawing(false);
-          console.log(
-            "Auto-exiting path drawing mode after successful generation"
-          );
         }
 
         // 清除canvas上的路径和拖拽的图片
-        const canvas = (
-          window as {
-            pathDrawingCanvas?: {
-              clearPath: () => void;
-              clearDroppedImages: () => void;
-              hasPath: () => boolean;
-              hasDroppedImages: () => boolean;
-              exportCompositeImage: () => string | null;
-            };
-          }
-        ).pathDrawingCanvas;
-
-        if (canvas) {
-          canvas.clearPath();
-          canvas.clearDroppedImages();
-          console.log(
-            "Cleared canvas paths and dropped images after generation"
-          );
-        }
+        clearCanvasContent();
 
         // 添加到历史记录
         if (taskData.result?.image_url) {
@@ -579,9 +630,8 @@ export default function ImageGenerator() {
   };
 
   // 路径绘制相关函数
-  const handlePathComplete = (pathData: string) => {
+  const handlePathComplete = (_pathData: string) => {
     // setPathData(pathData); // 路径数据现在由PathDrawingCanvas内部管理
-    console.log("Path completed:", pathData);
   };
 
   const togglePathDrawing = () => {
@@ -591,7 +641,6 @@ export default function ImageGenerator() {
   // 百宝箱相关函数
   const toggleTreasureBox = () => {
     const newShowTreasureBox = !showTreasureBox;
-    console.log("toggleTreasureBox: changing from", showTreasureBox, "to", newShowTreasureBox);
     setShowTreasureBox(newShowTreasureBox);
   };
 
@@ -608,7 +657,7 @@ export default function ImageGenerator() {
             file: file,
             timestamp: Date.now(),
           };
-          setTreasureBoxImages((prev) => [...prev, newImage]);
+          setTreasureBoxImages((prev) => [newImage, ...prev]);
           showToast("success", "图片上传成功", "已添加到百宝箱");
         }
       };
@@ -624,11 +673,8 @@ export default function ImageGenerator() {
 
   // 处理图片拖拽完成，自动关闭百宝箱
   const handleImageDropped = useCallback(() => {
-    console.log("handleImageDropped called, showTreasureBox:", showTreasureBox);
-
     // 使用函数式更新来避免闭包陈旧值问题
     setShowTreasureBox((currentShowTreasureBox) => {
-      console.log("setShowTreasureBox callback, currentShowTreasureBox:", currentShowTreasureBox);
 
       if (currentShowTreasureBox) {
         // 添加轻微延迟，让用户看到拖拽完成的效果
@@ -641,7 +687,182 @@ export default function ImageGenerator() {
     });
   }, []); // 移除依赖项，使用函数式更新
 
-  // 拖拽处理现在由PathDrawingCanvas内部管理
+  // 拖拽状态管理
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [draggedImage, setDraggedImage] = useState<any>(null);
+  const dragStartTimeRef = useRef<number>(0);
+  const mousePositionRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  // dnd-kit拖拽开始事件处理
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    dragStartTimeRef.current = performanceMonitor.startDragMonitoring();
+
+    // 阻止事件冒泡，防止触发父容器的滚动
+    if (event.activatorEvent) {
+      event.activatorEvent.preventDefault?.();
+      event.activatorEvent.stopPropagation?.();
+
+      // 记录初始位置
+      const activatorEvent = event.activatorEvent as any;
+      if (activatorEvent.touches && activatorEvent.touches.length > 0) {
+        mousePositionRef.current = {
+          x: activatorEvent.touches[0].clientX,
+          y: activatorEvent.touches[0].clientY
+        };
+      } else if (activatorEvent.clientX !== undefined && activatorEvent.clientY !== undefined) {
+        mousePositionRef.current = {
+          x: activatorEvent.clientX,
+          y: activatorEvent.clientY
+        };
+      }
+    }
+
+    // 临时禁用页面滚动
+    document.body.style.overflow = 'hidden';
+    document.body.style.touchAction = 'none';
+
+    // 设置拖拽状态
+    setActiveId(event.active.id as string);
+
+    // 保存被拖拽的图片数据
+    if (event.active.data.current?.type === 'treasure-image') {
+      setDraggedImage(event.active.data.current.image);
+    }
+  }, []);
+
+  // 拖拽取消事件处理
+  const handleDragCancel = useCallback(() => {
+    // 恢复页面滚动
+    document.body.style.overflow = '';
+    document.body.style.touchAction = '';
+
+    // 清理拖拽状态
+    setActiveId('');
+    setDraggedImage(null);
+  }, []);
+
+  // dnd-kit拖拽移动事件处理 - 实时跟踪位置
+  const handleDragMove = useCallback((event: DragMoveEvent) => {
+    // 更新当前位置
+    if (event.activatorEvent) {
+      const activatorEvent = event.activatorEvent as any;
+      if (activatorEvent.touches && activatorEvent.touches.length > 0) {
+        mousePositionRef.current = {
+          x: activatorEvent.touches[0].clientX,
+          y: activatorEvent.touches[0].clientY
+        };
+      } else if (activatorEvent.clientX !== undefined && activatorEvent.clientY !== undefined) {
+        mousePositionRef.current = {
+          x: activatorEvent.clientX,
+          y: activatorEvent.clientY
+        };
+      }
+    }
+  }, []);
+
+  // dnd-kit拖拽事件处理
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    let success = false;
+
+    // 恢复页面滚动
+    document.body.style.overflow = '';
+    document.body.style.touchAction = '';
+
+    try {
+      if (over && over.id === 'canvas-drop-zone') {
+        // 检查拖拽的数据类型
+        if (active.data.current?.type === 'treasure-image') {
+          const imageData = active.data.current.image;
+
+          // 获取PathDrawingCanvas的handleDndKitDrop函数
+          const pathCanvas = (window as any).pathDrawingCanvas;
+          if (pathCanvas && pathCanvas.handleDndKitDrop) {
+            // 计算精确的拖拽位置
+            let dropPosition = { x: 400, y: 300 }; // 默认位置
+
+            // 获取实际的拖拽释放位置
+            try {
+              const canvasElement = document.querySelector('canvas');
+              if (canvasElement) {
+                const rect = canvasElement.getBoundingClientRect();
+                const isMobile = /Mobi|Android/i.test(navigator.userAgent);
+
+                // 使用多种方法获取最准确的drop位置
+                let clientX = mousePositionRef.current.x;
+                let clientY = mousePositionRef.current.y;
+
+                // 移动端优化：使用更可靠的位置检测
+                if (isMobile) {
+                  // 方法1: 尝试从最新的全局事件获取位置
+                  const lastEvent = (window as any).lastPointerEvent;
+                  if (lastEvent) {
+                    if (lastEvent.touches && lastEvent.touches.length > 0) {
+                      clientX = lastEvent.touches[0].clientX;
+                      clientY = lastEvent.touches[0].clientY;
+                    } else if (lastEvent.changedTouches && lastEvent.changedTouches.length > 0) {
+                      // touchend事件使用changedTouches
+                      clientX = lastEvent.changedTouches[0].clientX;
+                      clientY = lastEvent.changedTouches[0].clientY;
+                    }
+                  }
+
+                  // 如果位置无效，使用canvas中心
+                  if (clientX === 0 && clientY === 0) {
+                    clientX = rect.left + rect.width / 2;
+                    clientY = rect.top + rect.height / 2;
+                  }
+                } else {
+                  // 桌面端：使用原有逻辑
+                  if (event.activatorEvent) {
+                    const activatorEvent = event.activatorEvent as any;
+                    if (activatorEvent.clientX !== undefined && activatorEvent.clientY !== undefined) {
+                      clientX = activatorEvent.clientX;
+                      clientY = activatorEvent.clientY;
+                    }
+                  }
+                }
+
+                // 检查位置是否在canvas范围内
+                const isInCanvas = clientX >= rect.left && clientX <= rect.right &&
+                                 clientY >= rect.top && clientY <= rect.bottom;
+
+                if (isInCanvas) {
+                  // 转换为相对于canvas的坐标
+                  const relativeX = clientX - rect.left;
+                  const relativeY = clientY - rect.top;
+
+                  // 设置drop位置
+                  dropPosition = {
+                    x: relativeX,
+                    y: relativeY
+                  };
+                }
+              }
+            } catch (error) {
+              // Failed to calculate drop position, using default
+            }
+
+            pathCanvas.handleDndKitDrop(imageData, dropPosition);
+            success = true;
+          }
+
+          // 调用原有的拖拽完成处理
+          handleImageDropped();
+        }
+      }
+    } catch (error) {
+      console.error("拖拽处理错误:", error);
+      DragDropErrorHandler.handleError(error as Error, "handleDragEnd");
+    } finally {
+      // 清除拖拽状态
+      setActiveId(null);
+      setDraggedImage(null);
+
+      // 记录性能数据
+      performanceMonitor.endDragMonitoring(dragStartTimeRef.current, success);
+    }
+  }, [handleImageDropped]);
 
   const getCompositeImageForGeneration = async (): Promise<File | null> => {
     // 现在统一从canvas获取图片，不再做复杂判断
@@ -779,10 +1000,32 @@ export default function ImageGenerator() {
     }
   };
 
+  // 清除canvas上的路径和拖拽的图片
+  const clearCanvasContent = () => {
+    const canvas = (
+      window as {
+        pathDrawingCanvas?: {
+          clearPath: () => void;
+          clearDroppedImages: () => void;
+          hasPath: () => boolean;
+          hasDroppedImages: () => boolean;
+          exportCompositeImage: () => string | null;
+        };
+      }
+    ).pathDrawingCanvas;
+
+    if (canvas) {
+      canvas.clearPath();
+      canvas.clearDroppedImages();
+    }
+  };
+
   const clearImage = () => {
     setIsGenerating(false);
     setIsCompareMode(false);
     setCurrentImageId(null);
+    // 清除canvas内容
+    clearCanvasContent();
   };
 
   // 获取代理图片URL
@@ -850,8 +1093,6 @@ export default function ImageGenerator() {
   // 选择历史图片
   const selectHistoryImage = async (historyItem: (typeof historyImages)[0]) => {
     try {
-      console.log("选择历史图片:", historyItem);
-
       // 设置基本状态
       setCurrentImageId(historyItem.id);
       // setPrompt(historyItem.prompt);
@@ -861,13 +1102,11 @@ export default function ImageGenerator() {
 
       if (historyItem.file) {
         // 如果是上传的图片，直接使用原始文件
-        console.log("使用原始文件");
         file = historyItem.file;
         previewUrl = historyItem.url; // 对于上传的图片，url就是blob URL
       } else {
         // 现在历史记录中的URL都是blob URL，直接使用
         previewUrl = historyItem.url;
-        console.log("使用历史记录中的blob URL:", previewUrl);
 
         // 尝试获取文件用于生成
         try {
@@ -876,7 +1115,6 @@ export default function ImageGenerator() {
             (historyItem as { originalUrl?: string; url: string })
               .originalUrl || historyItem.url;
           const proxyUrl = getProxyImageUrl(urlForFetch);
-          console.log("从代理URL获取图片:", proxyUrl);
           const response = await fetch(proxyUrl);
 
           if (!response.ok) {
@@ -884,12 +1122,11 @@ export default function ImageGenerator() {
           }
 
           const blob = await response.blob();
-          console.log("Blob大小:", blob.size, "类型:", blob.type);
           file = new File([blob], `history-${historyItem.id}.jpg`, {
             type: "image/jpeg",
           });
         } catch (fetchError) {
-          console.warn("获取文件失败，创建虚拟文件:", fetchError);
+          // 获取文件失败，创建虚拟文件
           // 如果无法获取文件，创建一个虚拟文件
           file = new File([], `history-${historyItem.id}.jpg`, {
             type: "image/jpeg",
@@ -898,9 +1135,9 @@ export default function ImageGenerator() {
       }
 
       // 使用变量以避免未使用警告
-      console.log("选择的历史图片:", { file: file?.name, previewUrl });
+      void file?.name;
+      void previewUrl;
     } catch (error) {
-      console.error("加载历史图片失败:", error);
       showToast(
         "error",
         "加载历史图片失败",
@@ -910,7 +1147,14 @@ export default function ImageGenerator() {
   };
 
   return (
-    <div className="h-screen bg-gradient-to-br from-slate-50 to-slate-100 relative">
+    <DndContext
+      sensors={sensors}
+      onDragStart={handleDragStart}
+      onDragMove={handleDragMove}
+      onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
+    >
+      <div className="h-screen bg-gradient-to-br from-slate-50 to-slate-100 relative">
       {/* 主要内容区域 - 图片展示 */}
       <div className="flex items-center justify-center h-full">
         <div className="w-full h-full flex items-center justify-center">
@@ -981,11 +1225,18 @@ export default function ImageGenerator() {
                       >
                         <HistoryImageAnimatedTooltip imageData={item}>
                           <div
-                            className={`relative w-16 h-16 rounded-lg cursor-pointer border-2 transition-all ${
+                            className={`relative w-16 h-16 rounded-lg cursor-pointer border-2 transition-all overflow-hidden ${
                               currentImageId === item.id
                                 ? "border-purple-500 ring-2 ring-purple-200"
                                 : "border-gray-200 hover:border-gray-300"
                             }`}
+                            style={{
+                              touchAction: 'none',
+                              userSelect: 'none',
+                              WebkitUserSelect: 'none',
+                              WebkitTouchCallout: 'none',
+                              WebkitTapHighlightColor: 'transparent'
+                            }}
                             onClick={() => selectHistoryImage(item)}
                           >
                             <img
@@ -1067,17 +1318,21 @@ export default function ImageGenerator() {
                   ]
                 : []),
               // 百宝箱按钮
-              {
-                title: showTreasureBox ? "关闭百宝箱" : "打开百宝箱",
-                icon: (
-                  <Package
-                    className={`h-full w-full ${
-                      showTreasureBox ? "text-orange-600" : "text-purple-600"
-                    }`}
-                  />
-                ),
-                onClick: toggleTreasureBox,
-              },
+              ...(currentImageId
+                ? [
+                    {
+                      title: showTreasureBox ? "关闭百宝箱" : "打开百宝箱",
+                      icon: (
+                        <Package
+                          className={`h-full w-full ${
+                            showTreasureBox ? "text-orange-600" : "text-purple-600"
+                          }`}
+                        />
+                      ),
+                      onClick: toggleTreasureBox,
+                    },
+                  ]
+                : []),
               // 参数设置按钮
               {
                 title: "参数设置",
@@ -1088,7 +1343,7 @@ export default function ImageGenerator() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-full w-full hover:bg-gray-100"
+                        className="h-full w-full hover:bg-gray-200 cursor-pointer"
                         disabled={isGenerating}
                         title="参数设置"
                       >
@@ -1191,34 +1446,6 @@ export default function ImageGenerator() {
                   </Popover>
                 ),
               },
-              // 生成按钮
-              {
-                title: "生成图片",
-                icon:
-                  isGenerating || isGeneratingPrompts ? (
-                    <RefreshCw className="h-full w-full animate-spin" />
-                  ) : (
-                    <Wand2 className="h-full w-full" />
-                  ),
-                element: (
-                  <Button
-                    onClick={handleGenerate}
-                    disabled={
-                      isGenerating ||
-                      isGeneratingPrompts ||
-                      (!prompt.trim() && !currentImageId)
-                    }
-                    className="h-full w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white border-0"
-                    title="生成图片"
-                  >
-                    {isGenerating || isGeneratingPrompts ? (
-                      <RefreshCw className="h-full w-full animate-spin" />
-                    ) : (
-                      <Wand2 className="h-full w-full" />
-                    )}
-                  </Button>
-                ),
-              },
               // 比较按钮 - 只有当前图片有源图片时才显示
               ...(getSourceImage() && getCurrentImage()
                 ? [
@@ -1236,7 +1463,7 @@ export default function ImageGenerator() {
                         <Button
                           onClick={() => setIsCompareMode(!isCompareMode)}
                           variant={isCompareMode ? "default" : "outline"}
-                          className={`h-full w-full ${
+                          className={`h-full w-full cursor-pointer ${
                             isCompareMode
                               ? "bg-orange-500 hover:bg-orange-600 text-white border-0"
                               : "hover:bg-orange-50 hover:border-orange-300"
@@ -1259,21 +1486,40 @@ export default function ImageGenerator() {
                     {
                       title: "下载图片",
                       icon: (
-                        <Download className="h-full w-full text-green-600" />
+                        <Download className="h-full w-full text-green-600 cursor-pointer" />
                       ),
-                      element: (
-                        <Button
-                          onClick={downloadImage}
-                          variant="outline"
-                          className="h-full w-full hover:bg-green-50 hover:border-green-300"
-                          title="下载图片"
-                        >
-                          <Download className="h-full w-full text-green-600" />
-                        </Button>
-                      ),
+                      onClick: downloadImage,
                     },
                   ]
                 : []),
+              // 生成按钮
+              {
+                title: "生成图片",
+                icon:
+                  isGenerating || isGeneratingPrompts ? (
+                    <RefreshCw className="h-full w-full animate-spin" />
+                  ) : (
+                    <Wand2 className="h-full w-full" />
+                  ),
+                element: (
+                  <Button
+                    onClick={handleGenerate}
+                    disabled={
+                      isGenerating ||
+                      isGeneratingPrompts ||
+                      (!prompt.trim() && !currentImageId)
+                    }
+                    className="h-full w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white border-0 cursor-pointer"
+                    title="生成图片"
+                  >
+                    {isGenerating || isGeneratingPrompts ? (
+                      <RefreshCw className="h-full w-full animate-spin" />
+                    ) : (
+                      <Wand2 className="h-full w-full" />
+                    )}
+                  </Button>
+                ),
+              },
             ].filter((item) => {
               if (isCompareMode) {
                 return item.id === "compare";
@@ -1299,13 +1545,27 @@ export default function ImageGenerator() {
       <TreasureBox
         isOpen={showTreasureBox}
         onClose={() => {
-          console.log("TreasureBox onClose called, closing treasure box");
           setShowTreasureBox(false);
         }}
         images={treasureBoxImages}
         onImageUpload={handleTreasureBoxImageUpload}
         onImageRemove={handleTreasureBoxImageRemove}
+        isLoadingPresetImages={isLoadingPresetImages}
       />
+
+      {/* 拖拽预览层 */}
+      <DragOverlay>
+        {activeId && draggedImage ? (
+          <div className="w-16 h-16 opacity-90 transform rotate-3 shadow-lg">
+            <img
+              src={draggedImage.thumbnailUrl || draggedImage.url}
+              alt="拖拽预览"
+              className="w-full h-full object-cover rounded-lg border-2 border-purple-500"
+            />
+          </div>
+        ) : null}
+      </DragOverlay>
     </div>
+    </DndContext>
   );
 }

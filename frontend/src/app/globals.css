@@ -141,6 +141,9 @@
   body {
     @apply bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;
+    /* 移动端拖拽优化 */
+    overscroll-behavior: none;
+    -webkit-overflow-scrolling: touch;
   }
 }
 
@@ -170,6 +173,8 @@
   transform: translateY(-4px);
   box-shadow: 0 12px 40px oklch(0 0 0 / 0.15);
 }
+
+
 
 :root {
   --color-1: oklch(66.2% 0.225 25.9);
