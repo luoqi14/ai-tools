@@ -449,8 +449,10 @@ export default function ImageGenerator() {
       if (validImages.length > 0) {
         setTreasureBoxImages(validImages);
         hasLoadedPresetImages.current = true;
+        showToast("success", "预设图片已加载", `成功加载 ${validImages.length} 张预设图片`);
       }
-    } catch {
+    } catch (error) {
+      console.error("加载预设图片失败:", error);
       showToast("error", "预设图片加载失败", "请稍后重试");
     } finally {
       setIsLoadingPresetImages(false);
@@ -692,6 +694,9 @@ export default function ImageGenerator() {
 
       if (currentShowTreasureBox) {
         // 添加轻微延迟，让用户看到拖拽完成的效果
+        setTimeout(() => {
+          showToast("success", "图片已添加到画布", "百宝箱已自动关闭");
+        }, 300);
         return false; // 关闭百宝箱
       }
       return currentShowTreasureBox; // 保持当前状态
