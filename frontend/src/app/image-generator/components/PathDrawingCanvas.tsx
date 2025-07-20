@@ -107,9 +107,42 @@ const PathDrawingCanvas: React.FC<PathDrawingCanvasProps> = ({
       // 确保缩放值有效
       const finalScale = Math.max(0.1, Math.min(scale, 2.0));
 
+      // 正确转换坐标：考虑viewport变换（缩放、平移等）
+      // 获取canvas元素的位置信息
+      const canvasElement = canvas.getElement();
+      const rect = canvasElement.getBoundingClientRect();
+
+      // 计算相对于canvas的坐标
+      const relativeX = dropPosition.x - rect.left;
+      const relativeY = dropPosition.y - rect.top;
+
+      // 手动进行viewport变换的逆变换
+      const vpt = canvas.viewportTransform;
+      let canvasPointer;
+
+      if (vpt) {
+        // 应用viewport变换的逆变换
+        // vpt格式: [scaleX, skewY, skewX, scaleY, translateX, translateY]
+        const scaleX = vpt[0];
+        const scaleY = vpt[3];
+        const translateX = vpt[4];
+        const translateY = vpt[5];
+
+        canvasPointer = {
+          x: (relativeX - translateX) / scaleX,
+          y: (relativeY - translateY) / scaleY
+        };
+      } else {
+        // 没有变换，直接使用相对坐标
+        canvasPointer = {
+          x: relativeX,
+          y: relativeY
+        };
+      }
+
       img.set({
-        left: dropPosition.x - (img.width * finalScale) / 2,
-        top: dropPosition.y - (img.height * finalScale) / 2,
+        left: canvasPointer.x - (img.width * finalScale) / 2,
+        top: canvasPointer.y - (img.height * finalScale) / 2,
         scaleX: finalScale,
         scaleY: finalScale,
         selectable: true,
@@ -648,7 +681,7 @@ const PathDrawingCanvas: React.FC<PathDrawingCanvasProps> = ({
       if (!fabricCanvasRef.current || !fabricCanvasRef.current.isDrawingMode)
         return;
 
-      const pointer = fabricCanvasRef.current.getPointer(
+      const pointer = fabricCanvasRef.current.getScenePoint(
         (event as { e: MouseEvent }).e
       );
 
@@ -672,7 +705,7 @@ const PathDrawingCanvas: React.FC<PathDrawingCanvasProps> = ({
       )
         return;
 
-      const pointer = fabricCanvasRef.current.getPointer(
+      const pointer = fabricCanvasRef.current.getScenePoint(
         (event as { e: MouseEvent }).e
       );
 

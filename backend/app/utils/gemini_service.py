@@ -162,7 +162,7 @@ class GeminiService:
 - 基于图片内容和用户的文字描述，生成针对性的FLUX Kontext **图片编辑**提示词
 - 如果没有图片，则基于用户的文字描述生成 **图片生成**提示词
 - 要处理物品融合或迁移时，原物品需要消除，因为它已经在其他位置出现了
-- 3条提示词，第1条严格遵循角色一致性原则；第2条允许有变化但应合理，如物品迁移时可以合理的互动；第3条可以有创意，发挥想象力
+- 3条提示词，第1条严格遵循角色一致性原则；第2条允许有变化但应合理，如物品迁移时可以合理的互动；第3条可以有创意，脑洞大开，发挥想象力
 
 **关键区别：**
 - **有图片时**：使用编辑动词（Change, Convert, Transform, Modify等），针对现有图片进行修改
@@ -214,7 +214,7 @@ class GeminiService:
                 contents=contents,
                 config=genai.types.GenerateContentConfig(
                     system_instruction=system_instruction,
-                    temperature=0.7,
+                    temperature=1.0,
                     response_mime_type='application/json'
                 )
             )

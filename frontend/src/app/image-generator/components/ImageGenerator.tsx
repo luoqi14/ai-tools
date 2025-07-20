@@ -449,10 +449,8 @@ export default function ImageGenerator() {
       if (validImages.length > 0) {
         setTreasureBoxImages(validImages);
         hasLoadedPresetImages.current = true;
-        showToast("success", "预设图片已加载", `成功加载 ${validImages.length} 张预设图片`);
       }
     } catch (error) {
-      console.error("加载预设图片失败:", error);
       showToast("error", "预设图片加载失败", "请稍后重试");
     } finally {
       setIsLoadingPresetImages(false);
@@ -694,9 +692,6 @@ export default function ImageGenerator() {
 
       if (currentShowTreasureBox) {
         // 添加轻微延迟，让用户看到拖拽完成的效果
-        setTimeout(() => {
-          showToast("success", "图片已添加到画布", "百宝箱已自动关闭");
-        }, 300);
         return false; // 关闭百宝箱
       }
       return currentShowTreasureBox; // 保持当前状态
@@ -832,12 +827,30 @@ export default function ImageGenerator() {
                     clientY = rect.top + rect.height / 2;
                   }
                 } else {
-                  // 桌面端：使用原有逻辑
-                  if (event.activatorEvent) {
+                  // 桌面端：优先使用最新的鼠标位置
+                  console.log('桌面端拖拽定位 - mousePositionRef:', mousePositionRef.current);
+                  // 方法1: 使用实时更新的鼠标位置
+                  if (mousePositionRef.current.x !== 0 || mousePositionRef.current.y !== 0) {
+                    clientX = mousePositionRef.current.x;
+                    clientY = mousePositionRef.current.y;
+                    console.log('使用 mousePositionRef:', { clientX, clientY });
+                  }
+                  // 方法2: 尝试从最新的全局事件获取位置
+                  else if (window.lastPointerEvent && 'clientX' in window.lastPointerEvent && 'clientY' in window.lastPointerEvent) {
+                    const lastEvent = window.lastPointerEvent;
+                    if (lastEvent.clientX !== undefined && lastEvent.clientY !== undefined) {
+                      clientX = lastEvent.clientX;
+                      clientY = lastEvent.clientY;
+                      console.log('使用 lastPointerEvent:', { clientX, clientY });
+                    }
+                  }
+                  // 方法3: 备选方案，使用activatorEvent（拖拽开始位置）
+                  else if (event.activatorEvent) {
                     const activatorEvent = event.activatorEvent as PointerEventWithTouches;
                     if (activatorEvent.clientX !== undefined && activatorEvent.clientY !== undefined) {
                       clientX = activatorEvent.clientX;
                       clientY = activatorEvent.clientY;
+                      console.log('使用 activatorEvent (备选):', { clientX, clientY });
                     }
                   }
                 }
@@ -847,15 +860,19 @@ export default function ImageGenerator() {
                                  clientY >= rect.top && clientY <= rect.bottom;
 
                 if (isInCanvas) {
-                  // 转换为相对于canvas的坐标
-                  const relativeX = clientX - rect.left;
-                  const relativeY = clientY - rect.top;
-
-                  // 设置drop位置
+                  // 直接传递屏幕坐标，让PathDrawingCanvas处理坐标转换
+                  // 这样可以正确处理viewport变换（缩放、平移等）
                   dropPosition = {
-                    x: relativeX,
-                    y: relativeY
+                    x: clientX,
+                    y: clientY
                   };
+
+                  console.log('🎯 ImageGenerator传递的坐标:', {
+                    clientX,
+                    clientY,
+                    canvasRect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+                    dropPosition
+                  });
                 }
               }
             } catch {
