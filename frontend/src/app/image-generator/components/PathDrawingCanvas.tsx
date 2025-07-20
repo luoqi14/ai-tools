@@ -391,7 +391,6 @@ const PathDrawingCanvas: React.FC<PathDrawingCanvasProps> = ({
         e.preventDefault();
         e.stopPropagation();
 
-        console.log('双指触摸开始 - upper-canvas');
 
         const touch1 = e.touches[0];
         const touch2 = e.touches[1];

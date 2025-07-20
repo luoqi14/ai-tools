@@ -15,7 +15,7 @@ interface PerformanceMetrics {
 interface DragDropEvent {
   type: 'drag_start' | 'drag_end' | 'drop_success' | 'drop_error';
   timestamp: number;
-  data?: any;
+  data?: unknown;
   error?: Error;
 }
 
@@ -269,7 +269,7 @@ export class DebugUtils {
   private static debugMode = process.env.NODE_ENV === 'development';
 
   // 调试日志
-  static log(message: string, data?: any): void {
+  static log(message: string, data?: unknown): void {
     if (this.debugMode) {
       console.log(`[DragDrop Debug] ${message}`, data || '');
     }

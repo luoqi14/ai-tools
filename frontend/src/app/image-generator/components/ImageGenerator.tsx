@@ -17,10 +17,26 @@ interface SelectedPromptInfo {
   optimizationReason: string;
 }
 
+// 拖拽图片数据类型
+interface DraggedImageData {
+  id: string;
+  url: string;
+  name?: string;
+  thumbnailUrl?: string;
+}
+
+// 指针事件类型
+interface PointerEventWithTouches extends Event {
+  touches?: TouchList;
+  clientX?: number;
+  clientY?: number;
+}
+
 // 扩展 Window 接口
 declare global {
   interface Window {
     selectedPromptInfo?: SelectedPromptInfo;
+    lastPointerEvent?: PointerEventWithTouches | MouseEvent | TouchEvent;
   }
 }
 import {
@@ -116,19 +132,19 @@ export default function ImageGenerator() {
         const touch = e.touches[0];
         mousePositionRef.current = { x: touch.clientX, y: touch.clientY };
         // 保存到全局变量供drop时使用
-        (window as any).lastPointerEvent = e;
+        window.lastPointerEvent = e;
       }
     };
 
     const handleTouchEnd = (e: TouchEvent) => {
       // 保存touchend事件，包含最后的触摸位置
-      (window as any).lastPointerEvent = e;
+      window.lastPointerEvent = e;
     };
 
     const handleMouseMoveGlobal = (e: MouseEvent) => {
       handleMouseMove(e);
       // 保存到全局变量供drop时使用
-      (window as any).lastPointerEvent = e;
+      window.lastPointerEvent = e;
     };
 
     document.addEventListener('mousemove', handleMouseMoveGlobal);
@@ -630,8 +646,8 @@ export default function ImageGenerator() {
   };
 
   // 路径绘制相关函数
-  const handlePathComplete = (_pathData: string) => {
-    // setPathData(pathData); // 路径数据现在由PathDrawingCanvas内部管理
+  const handlePathComplete = () => {
+    // 路径数据现在由PathDrawingCanvas内部管理
   };
 
   const togglePathDrawing = () => {
@@ -689,7 +705,7 @@ export default function ImageGenerator() {
 
   // 拖拽状态管理
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [draggedImage, setDraggedImage] = useState<any>(null);
+  const [draggedImage, setDraggedImage] = useState<DraggedImageData | null>(null);
   const dragStartTimeRef = useRef<number>(0);
   const mousePositionRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
@@ -703,7 +719,7 @@ export default function ImageGenerator() {
       event.activatorEvent.stopPropagation?.();
 
       // 记录初始位置
-      const activatorEvent = event.activatorEvent as any;
+      const activatorEvent = event.activatorEvent as PointerEventWithTouches;
       if (activatorEvent.touches && activatorEvent.touches.length > 0) {
         mousePositionRef.current = {
           x: activatorEvent.touches[0].clientX,
@@ -745,7 +761,7 @@ export default function ImageGenerator() {
   const handleDragMove = useCallback((event: DragMoveEvent) => {
     // 更新当前位置
     if (event.activatorEvent) {
-      const activatorEvent = event.activatorEvent as any;
+      const activatorEvent = event.activatorEvent as PointerEventWithTouches;
       if (activatorEvent.touches && activatorEvent.touches.length > 0) {
         mousePositionRef.current = {
           x: activatorEvent.touches[0].clientX,
@@ -776,7 +792,7 @@ export default function ImageGenerator() {
           const imageData = active.data.current.image;
 
           // 获取PathDrawingCanvas的handleDndKitDrop函数
-          const pathCanvas = (window as any).pathDrawingCanvas;
+          const pathCanvas = (window as { pathDrawingCanvas?: { handleDndKitDrop?: (imageData: DraggedImageData, position: { x: number; y: number }) => void } }).pathDrawingCanvas;
           if (pathCanvas && pathCanvas.handleDndKitDrop) {
             // 计算精确的拖拽位置
             let dropPosition = { x: 400, y: 300 }; // 默认位置
@@ -795,15 +811,18 @@ export default function ImageGenerator() {
                 // 移动端优化：使用更可靠的位置检测
                 if (isMobile) {
                   // 方法1: 尝试从最新的全局事件获取位置
-                  const lastEvent = (window as any).lastPointerEvent;
+                  const lastEvent = window.lastPointerEvent;
                   if (lastEvent) {
-                    if (lastEvent.touches && lastEvent.touches.length > 0) {
+                    if ('touches' in lastEvent && lastEvent.touches && lastEvent.touches.length > 0) {
                       clientX = lastEvent.touches[0].clientX;
                       clientY = lastEvent.touches[0].clientY;
-                    } else if (lastEvent.changedTouches && lastEvent.changedTouches.length > 0) {
+                    } else if ('changedTouches' in lastEvent && lastEvent.changedTouches && lastEvent.changedTouches.length > 0) {
                       // touchend事件使用changedTouches
                       clientX = lastEvent.changedTouches[0].clientX;
                       clientY = lastEvent.changedTouches[0].clientY;
+                    } else if ('clientX' in lastEvent && 'clientY' in lastEvent && lastEvent.clientX !== undefined && lastEvent.clientY !== undefined) {
+                      clientX = lastEvent.clientX;
+                      clientY = lastEvent.clientY;
                     }
                   }
 
@@ -815,7 +834,7 @@ export default function ImageGenerator() {
                 } else {
                   // 桌面端：使用原有逻辑
                   if (event.activatorEvent) {
-                    const activatorEvent = event.activatorEvent as any;
+                    const activatorEvent = event.activatorEvent as PointerEventWithTouches;
                     if (activatorEvent.clientX !== undefined && activatorEvent.clientY !== undefined) {
                       clientX = activatorEvent.clientX;
                       clientY = activatorEvent.clientY;
@@ -839,7 +858,7 @@ export default function ImageGenerator() {
                   };
                 }
               }
-            } catch (error) {
+            } catch {
               // Failed to calculate drop position, using default
             }
 
@@ -1125,7 +1144,7 @@ export default function ImageGenerator() {
           file = new File([blob], `history-${historyItem.id}.jpg`, {
             type: "image/jpeg",
           });
-        } catch (fetchError) {
+        } catch {
           // 获取文件失败，创建虚拟文件
           // 如果无法获取文件，创建一个虚拟文件
           file = new File([], `history-${historyItem.id}.jpg`, {
