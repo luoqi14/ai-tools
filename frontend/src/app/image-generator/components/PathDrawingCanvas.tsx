@@ -116,14 +116,7 @@ const PathDrawingCanvas: React.FC<PathDrawingCanvasProps> = ({
       const relativeX = dropPosition.x - rect.left;
       const relativeY = dropPosition.y - rect.top;
 
-      console.log('🎯 拖拽坐标调试信息:', {
-        dropPosition,
-        canvasRect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
-        relative: { x: relativeX, y: relativeY },
-        canvasSize: { width: canvas.width, height: canvas.height },
-        zoom: canvas.getZoom(),
-        viewportTransform: canvas.viewportTransform
-      });
+
 
       // 手动进行viewport变换的逆变换
       const vpt = canvas.viewportTransform;
@@ -149,7 +142,7 @@ const PathDrawingCanvas: React.FC<PathDrawingCanvasProps> = ({
         };
       }
 
-      console.log('🎯 手动转换后的canvas坐标:', canvasPointer);
+
 
       img.set({
         left: canvasPointer.x - (img.width * finalScale) / 2,

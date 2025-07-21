@@ -20,6 +20,8 @@ services:
       - BFL_API_KEY=${BFL_API_KEY:-564cb439-9ba9-44d7-b885-bb2271a79224}
       - SECRET_KEY=${SECRET_KEY:-ai-tools-secret-key-2024}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3003}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
     restart: unless-stopped
     networks:
       - ai-tools-network

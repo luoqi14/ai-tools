@@ -66,6 +66,11 @@ FRONTEND_PORT=3003
 
 # CORS 配置（多个域名用逗号分隔）
 CORS_ORIGINS=https://ai.jarvismedical.asia,http://localhost:3003
+
+# Gemini AI 配置
+# 请替换为您的 Gemini API 密钥
+GEMINI_API_KEY=your-gemini-api-key-here
+GEMINI_MODEL=gemini-2.5-flash
 EOF
 
     print_message ".env 文件创建成功"
@@ -82,12 +87,21 @@ verify_env() {
             print_error "BFL_API_KEY 未设置"
             return 1
         fi
-        
+
+        # 检查 Gemini API 密钥（警告而不是错误，因为可能不是必需的）
+        if [ -z "$GEMINI_API_KEY" ] || [ "$GEMINI_API_KEY" = "your-gemini-api-key-here" ]; then
+            print_warning "GEMINI_API_KEY 未设置或使用默认值，Gemini 功能将不可用"
+        fi
+
         print_message "环境变量验证通过"
         echo "  BFL_API_KEY: ${BFL_API_KEY:0:8}..."
         echo "  FLASK_ENV: $FLASK_ENV"
         echo "  BACKEND_PORT: $BACKEND_PORT"
         echo "  FRONTEND_PORT: $FRONTEND_PORT"
+        if [ -n "$GEMINI_API_KEY" ] && [ "$GEMINI_API_KEY" != "your-gemini-api-key-here" ]; then
+            echo "  GEMINI_API_KEY: ${GEMINI_API_KEY:0:8}..."
+            echo "  GEMINI_MODEL: $GEMINI_MODEL"
+        fi
         
         return 0
     else

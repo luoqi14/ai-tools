@@ -5,7 +5,15 @@ from typing import List, Dict, Any
 
 class GeminiService:
     def __init__(self):
-        self.api_key = "AIzaSyCgxs1UF3qv0d2AFm9Opl1vwroYIlOzW1g"
+        # 从环境变量获取API密钥
+        self.api_key = os.getenv('GEMINI_API_KEY')
+        if not self.api_key:
+            raise ValueError("GEMINI_API_KEY environment variable is required")
+
+        # 从环境变量获取模型名称，提供默认值
+        self.model_name = os.getenv('GEMINI_MODEL', 'gemini-2.5-flash')
+
+        # 初始化客户端
         self.client = genai.Client(api_key=self.api_key)
         
     def generate_flux_prompts(self, user_input: str, input_image: bytes = None, input_image_mime_type: str = None) -> List[Dict[str, Any]]:
@@ -210,7 +218,7 @@ class GeminiService:
         
         try:
             response = self.client.models.generate_content(
-                model='gemini-2.5-flash',
+                model=self.model_name,
                 contents=contents,
                 config=genai.types.GenerateContentConfig(
                     system_instruction=system_instruction,
@@ -247,4 +255,17 @@ class GeminiService:
             raise Exception(f"Gemini API调用失败: {str(e)}")
 
 # 创建全局实例
-gemini_service = GeminiService()
+# 使用延迟初始化以避免在导入时就要求环境变量
+gemini_service = None
+
+def get_gemini_service():
+    """
+    获取Gemini服务实例，使用延迟初始化
+    """
+    global gemini_service
+    if gemini_service is None:
+        try:
+            gemini_service = GeminiService()
+        except ValueError as e:
+            raise Exception(f"Gemini服务初始化失败: {str(e)}")
+    return gemini_service

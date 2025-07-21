@@ -3,7 +3,7 @@ import requests
 import os
 import base64
 from io import BytesIO
-from ..utils.gemini_service import gemini_service
+from ..utils.gemini_service import get_gemini_service
 
 image_generation_bp = Blueprint('image_generation', __name__)
 
@@ -339,6 +339,7 @@ def generate_prompts():
                 }), 400
         
         # 调用Gemini服务生成提示词
+        gemini_service = get_gemini_service()
         prompts = gemini_service.generate_flux_prompts(user_input, input_image, input_image_mime_type)
         
         return jsonify({
