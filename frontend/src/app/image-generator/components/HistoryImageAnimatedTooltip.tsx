@@ -27,10 +27,24 @@ interface HistoryImageData {
 interface HistoryImageAnimatedTooltipProps {
   imageData: HistoryImageData;
   children: React.ReactNode;
+  isOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
-export const HistoryImageAnimatedTooltip = ({ imageData, children }: HistoryImageAnimatedTooltipProps) => {
-  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+export const HistoryImageAnimatedTooltip = ({
+  imageData,
+  children,
+  isOpen = false,
+  onOpenChange
+}: HistoryImageAnimatedTooltipProps) => {
+  // 内部状态，仅在非受控模式下使用
+  const [internalHoveredIndex, setInternalHoveredIndex] = useState<number | null>(null);
+
+  // 如果传入了isOpen和onOpenChange，则使用受控模式
+  const isControlled = isOpen !== undefined && onOpenChange !== undefined;
+
+  // 根据是否受控来决定使用哪个状态
+  const isTooltipOpen = isControlled ? isOpen : internalHoveredIndex === 1;
 
   const springConfig = { stiffness: 100, damping: 5 };
   const x = useMotionValue(0); // going to set this value on mouse move
@@ -50,16 +64,34 @@ export const HistoryImageAnimatedTooltip = ({ imageData, children }: HistoryImag
     x.set(event.nativeEvent.offsetX - halfWidth); // set the x value, which is then used in transform and rotate
   };
 
+  // 处理鼠标进入事件
+  const handleMouseEnter = () => {
+    if (isControlled) {
+      onOpenChange?.(true);
+    } else {
+      setInternalHoveredIndex(1);
+    }
+  };
+
+  // 处理鼠标离开事件
+  const handleMouseLeave = () => {
+    if (isControlled) {
+      onOpenChange?.(false);
+    } else {
+      setInternalHoveredIndex(null);
+    }
+  };
+
   const hasDetailedInfo = imageData.originalUserInput || imageData.optimizedPrompt || imageData.optimizationReason;
 
   return (
     <div
       className="group relative"
-      onMouseEnter={() => setHoveredIndex(1)}
-      onMouseLeave={() => setHoveredIndex(null)}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
     >
       <AnimatePresence mode="popLayout">
-        {hoveredIndex === 1 && (
+        {isTooltipOpen && (
           <motion.div
             initial={{ opacity: 0, y: 20, scale: 0.6 }}
             animate={{

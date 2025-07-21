@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useEffect, useRef } from "react";
+import React, { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { api, ImageGenerationRequest, API_BASE_URL } from "@/lib/api";
 import { toast } from "sonner";
 import { DndContext, DragEndEvent, DragOverlay, useSensors, useSensor, PointerSensor, TouchSensor, DragStartEvent } from "@dnd-kit/core";
@@ -87,7 +87,7 @@ import { Compare } from "@/components/ui/compare";
 import { FloatingDock } from "@/components/ui/floating-dock";
 
 // 导入提示词选择对话框
-import { PromptSelectionDialog } from "@/components/ui/prompt-selection-dialog";
+import { PromptSelectionDialog } from "./PromptSelectionDialog";
 
 // 导入路径绘制组件
 import PathDrawingCanvas from "./PathDrawingCanvas";
@@ -185,6 +185,12 @@ export default function ImageGenerator() {
 
   // 比较模式状态
   const [isCompareMode, setIsCompareMode] = useState(false);
+
+  // Popover状态控制
+  const [isSettingsPopoverOpen, setIsSettingsPopoverOpen] = useState(false);
+
+  // 历史图片tooltip状态控制
+  const [openTooltipId, setOpenTooltipId] = useState<string | null>(null);
 
   // 提示词选择状态
   const [showPromptDialog, setShowPromptDialog] = useState(false);
@@ -862,7 +868,7 @@ export default function ImageGenerator() {
 
                 // 检查位置是否在canvas范围内
                 const isInCanvas = clientX >= rect.left && clientX <= rect.right &&
-                                 clientY >= rect.top && clientY <= rect.bottom;
+                  clientY >= rect.top && clientY <= rect.bottom;
 
                 if (isInCanvas) {
                   // 直接传递屏幕坐标，让PathDrawingCanvas处理坐标转换
@@ -1191,33 +1197,33 @@ export default function ImageGenerator() {
       onDragCancel={handleDragCancel}
     >
       <div className="h-screen bg-gradient-to-br from-slate-50 to-slate-100 relative">
-      {/* 主要内容区域 - 图片展示 */}
-      <div className="flex items-center justify-center h-full">
-        <div className="w-full h-full flex items-center justify-center">
-          {/* 文件上传区域 */}
-          {!currentImageId && (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="w-full max-w-2xl px-8">
-                <FileUpload onChange={handleImageUpload} />
+        {/* 主要内容区域 - 图片展示 */}
+        <div className="flex items-center justify-center h-full">
+          <div className="w-full h-full flex items-center justify-center">
+            {/* 文件上传区域 */}
+            {!currentImageId && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-full max-w-2xl px-8">
+                  <FileUpload onChange={handleImageUpload} />
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* 图片对比区域 - 比较模式 */}
-          {isCompareMode && (
-            <div className="relative w-full h-[calc(100vh-332px)] flex items-center justify-center self-start pt-[16px]">
-              <Compare
-                firstImage={getSourceImage()!}
-                secondImage={getCurrentImage()!}
-                firstImageClassName="object-contain"
-                secondImageClassname="object-contain"
-                className="rounded-lg w-full h-full"
-                slideMode="hover"
-                autoplay={true}
-                autoplayDuration={3000}
-              />
-            </div>
-          )}
+            {/* 图片对比区域 - 比较模式 */}
+            {isCompareMode && (
+              <div className="relative w-full h-[calc(100vh-332px)] flex items-center justify-center self-start pt-[16px]">
+                <Compare
+                  firstImage={getSourceImage()!}
+                  secondImage={getCurrentImage()!}
+                  firstImageClassName="object-contain"
+                  secondImageClassname="object-contain"
+                  className="rounded-lg w-full h-full"
+                  slideMode="hover"
+                  autoplay={true}
+                  autoplayDuration={3000}
+                />
+              </div>
+            )}
 
           {/* PathDrawingCanvas - 处理所有图片展示 */}
           {!isCompareMode && (
@@ -1225,6 +1231,11 @@ export default function ImageGenerator() {
               backgroundImage={getCurrentImage() || undefined}
               onPathComplete={handlePathComplete}
               onImageDropped={handleImageDropped}
+              onCanvasClick={() => {
+                setIsSettingsPopoverOpen(false);
+                setShowTreasureBox(false);
+                setOpenTooltipId(null); // 关闭所有历史图片tooltip
+              }}
               showPathDrawing={showPathDrawing}
               className="absolute inset-0"
               gridConfig={{
@@ -1239,130 +1250,133 @@ export default function ImageGenerator() {
         </div>
       </div>
 
-      {/* 底部输入区域 */}
-      <div className="absolute bottom-0 left-0 right-0 p-6 pb-8">
-        <div className="max-w-4xl mx-auto mb-4">
-          {/* 历史图片展示 */}
-          {historyImages.length > 0 && (
-            <div className="mb-4">
-              <div className="relative">
-                <Carousel
-                  opts={{
-                    align: "start",
-                    loop: false,
-                  }}
-                  className="w-full max-w-full"
-                >
-                  <CarouselContent className="-ml-2 md:-ml-4">
-                    {historyImages.map((item) => (
-                      <CarouselItem
-                        key={item.id}
-                        className="pl-2 md:pl-4 basis-auto"
-                      >
-                        <HistoryImageAnimatedTooltip imageData={item}>
-                          <div
-                            className={`relative w-16 h-16 rounded-lg cursor-pointer border-2 transition-all overflow-hidden ${
-                              currentImageId === item.id
+        {/* 底部输入区域 */}
+        <div className="absolute bottom-0 left-0 right-0 p-4 md:p-6">
+          <div className="max-w-4xl mx-auto mb-4">
+            {/* 历史图片展示 */}
+            {historyImages.length > 0 && (
+              <div className="mb-4">
+                <div className="relative">
+                  <Carousel
+                    opts={{
+                      align: "start",
+                      loop: false,
+                    }}
+                    className="w-full max-w-full"
+                  >
+                    <CarouselContent className="-ml-2 md:-ml-4">
+                      {historyImages.map((item) => (
+                        <CarouselItem
+                          key={item.id}
+                          className="pl-2 md:pl-4 basis-auto"
+                        >
+                          <HistoryImageAnimatedTooltip
+                            imageData={item}
+                            isOpen={openTooltipId === item.id}
+                            onOpenChange={(open) => {
+                              setOpenTooltipId(open ? item.id : null);
+                            }}
+                          >
+                            <div
+                              className={`relative w-16 h-16 rounded-lg cursor-pointer border-2 transition-all overflow-hidden ${currentImageId === item.id
                                 ? "border-purple-500 ring-2 ring-purple-200"
                                 : "border-gray-200 hover:border-gray-300"
-                            }`}
-                            style={{
-                              touchAction: 'none',
-                              userSelect: 'none',
-                              WebkitUserSelect: 'none',
-                              WebkitTouchCallout: 'none',
-                              WebkitTapHighlightColor: 'transparent'
-                            }}
-                            onClick={() => selectHistoryImage(item)}
-                          >
-                            <img
-                              src={item.thumbnailUrl || item.url} // 优先使用缩略图，如果不存在则使用原图
-                              alt={`历史图片 ${item.id}`}
-                              className="w-full h-full object-cover hover:scale-105"
-                            />
-                            {currentImageId === item.id && (
-                              <div className="absolute inset-0 bg-purple-500/10 flex items-center justify-center">
-                                <div className="w-2 h-2 bg-purple-500 rounded-full shadow-lg"></div>
-                              </div>
-                            )}
-                          </div>
-                        </HistoryImageAnimatedTooltip>
-                      </CarouselItem>
-                    ))}
-                  </CarouselContent>
-                  <CarouselPrevious className="-left-4 h-8 w-8 bg-white/80 backdrop-blur-sm border shadow-md hover:bg-white/90" />
-                  <CarouselNext className="-right-4 h-8 w-8 bg-white/80 backdrop-blur-sm border shadow-md hover:bg-white/90" />
-                </Carousel>
+                                }`}
+                              style={{
+                                touchAction: 'none',
+                                userSelect: 'none',
+                                WebkitUserSelect: 'none',
+                                WebkitTouchCallout: 'none',
+                                WebkitTapHighlightColor: 'transparent'
+                              }}
+                              onClick={() => selectHistoryImage(item)}
+                            >
+                              <img
+                                src={item.thumbnailUrl || item.url} // 优先使用缩略图，如果不存在则使用原图
+                                alt={`历史图片 ${item.id}`}
+                                className="w-full h-full object-cover hover:scale-105"
+                              />
+                              {currentImageId === item.id && (
+                                <div className="absolute inset-0 bg-purple-500/10 flex items-center justify-center">
+                                  <div className="w-2 h-2 bg-purple-500 rounded-full shadow-lg"></div>
+                                </div>
+                              )}
+                            </div>
+                          </HistoryImageAnimatedTooltip>
+                        </CarouselItem>
+                      ))}
+                    </CarouselContent>
+                    <CarouselPrevious className="-left-4 h-8 w-8 bg-white/80 backdrop-blur-sm border shadow-md hover:bg-white/90" />
+                    <CarouselNext className="-right-4 h-8 w-8 bg-white/80 backdrop-blur-sm border shadow-md hover:bg-white/90" />
+                  </Carousel>
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          <Textarea
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            placeholder="用英文描述您想要生成的图片..."
-            className="min-h-[80px] resize-none bg-white/50 backdrop-blur-md border-input placeholder:text-gray-400 focus-visible:border-color-none focus-visible:ring-0 focus-visible:ring-offset-0 rounded-2xl"
-            disabled={isGenerating}
-          />
-        </div>
+            <Textarea
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder="用英文描述您想要生成的图片..."
+              className="min-h-[80px] resize-none bg-white/50 backdrop-blur-md border-input placeholder:text-gray-400 focus-visible:border-color-none focus-visible:ring-0 focus-visible:ring-offset-0 rounded-2xl"
+              disabled={isGenerating}
+            />
+          </div>
 
-        {/* Floating Dock控制区域 */}
-        <div className="flex justify-center">
-          <FloatingDock
-            items={[
-              // 清空图片按钮
-              ...(currentImageId
-                ? [
+          {/* Floating Dock控制区域 */}
+          <div className="flex justify-center md:justify-center max-md:justify-end">
+            <FloatingDock
+              items={[
+                // 清空图片按钮
+                ...(currentImageId
+                  ? [
                     {
                       title: "清空图片",
                       icon: <X className="text-red-600 h-full w-full" />,
                       onClick: clearImage,
                     },
                   ]
-                : []),
-              // 上传图片按钮
-              {
-                title: "上传图片",
-                icon: <Upload className="text-blue-600 h-full w-full" />,
-                onClick: () => {
-                  const input = document.createElement("input");
-                  input.type = "file";
-                  input.accept = "image/*";
-                  input.onchange = (e) => {
-                    const file = (e.target as HTMLInputElement).files?.[0];
-                    if (file) {
-                      handleImageUpload([file]);
-                    }
-                  };
-                  input.click();
+                  : []),
+                // 上传图片按钮
+                {
+                  title: "上传图片",
+                  icon: <Upload className="text-blue-600 h-full w-full" />,
+                  onClick: () => {
+                    const input = document.createElement("input");
+                    input.type = "file";
+                    input.accept = "image/*";
+                    input.onchange = (e) => {
+                      const file = (e.target as HTMLInputElement).files?.[0];
+                      if (file) {
+                        handleImageUpload([file]);
+                      }
+                    };
+                    input.click();
+                  },
                 },
-              },
-              // 路径绘制按钮
-              ...(currentImageId
-                ? [
+                // 路径绘制按钮
+                ...(currentImageId
+                  ? [
                     {
                       title: showPathDrawing ? "退出绘制" : "绘制路径",
                       icon: (
                         <Pen
-                          className={`h-full w-full ${
-                            showPathDrawing ? "text-red-600" : "text-green-600"
-                          }`}
+                          className={`h-full w-full ${showPathDrawing ? "text-red-600" : "text-green-600"
+                            }`}
                         />
                       ),
                       onClick: togglePathDrawing,
                     },
                   ]
-                : []),
-              // 百宝箱按钮
-              ...(currentImageId
-                ? [
+                  : []),
+                // 百宝箱按钮
+                ...(currentImageId
+                  ? [
                     {
                       title: showTreasureBox ? "关闭百宝箱" : "打开百宝箱",
                       icon: (
                         <Package
-                          className={`h-full w-full ${
-                            showTreasureBox ? "text-orange-600" : "text-purple-600"
-                          }`}
+                          className={`h-full w-full ${showTreasureBox ? "text-orange-600" : "text-purple-600"
+                            }`}
                         />
                       ),
                       onClick: toggleTreasureBox,
@@ -1374,7 +1388,7 @@ export default function ImageGenerator() {
                 title: "参数设置",
                 icon: <Settings className="h-full w-full" />,
                 element: (
-                  <Popover>
+                  <Popover open={isSettingsPopoverOpen} onOpenChange={setIsSettingsPopoverOpen}>
                     <PopoverTrigger asChild>
                       <Button
                         variant="ghost"
@@ -1386,7 +1400,10 @@ export default function ImageGenerator() {
                         <Settings className="h-full w-full" />
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-80" align="center" side="top">
+                    <PopoverContent className="w-80" align="center" side="top" onInteractOutside={(e) => {
+                        // 阻止因焦点丢失而关闭popover
+                        e.preventDefault();
+                      }}>
                       <div className="space-y-4">
                         <div className="space-y-2">
                           <Label htmlFor="aspect-ratio">纵横比</Label>
@@ -1490,35 +1507,32 @@ export default function ImageGenerator() {
                       title: isCompareMode ? "退出比较模式" : "比较图片",
                       icon: (
                         <ArrowLeftRight
-                          className={`h-full w-full ${
-                            isCompareMode ? "text-white" : "text-orange-600"
-                          }`}
+                          className={`h-full w-full ${isCompareMode ? "text-white" : "text-orange-600"
+                            }`}
                         />
                       ),
                       element: (
                         <Button
                           onClick={() => setIsCompareMode(!isCompareMode)}
                           variant={isCompareMode ? "default" : "outline"}
-                          className={`h-full w-full cursor-pointer ${
-                            isCompareMode
-                              ? "bg-orange-500 hover:bg-orange-600 text-white border-0"
-                              : "hover:bg-orange-50 hover:border-orange-300"
-                          }`}
+                          className={`h-full w-full cursor-pointer ${isCompareMode
+                            ? "bg-orange-500 hover:bg-orange-600 text-white border-0"
+                            : "hover:bg-orange-50 hover:border-orange-300"
+                            }`}
                           title={isCompareMode ? "退出比较模式" : "比较图片"}
                         >
                           <ArrowLeftRight
-                            className={`h-full w-full ${
-                              isCompareMode ? "text-white" : "text-orange-600"
-                            }`}
+                            className={`h-full w-full ${isCompareMode ? "text-white" : "text-orange-600"
+                              }`}
                           />
                         </Button>
                       ),
                     },
                   ]
-                : []),
-              // 下载按钮
-              ...(getCurrentImage()
-                ? [
+                  : []),
+                // 下载按钮
+                ...(getCurrentImage()
+                  ? [
                     {
                       title: "下载图片",
                       icon: (
@@ -1527,81 +1541,81 @@ export default function ImageGenerator() {
                       onClick: downloadImage,
                     },
                   ]
-                : []),
-              // 生成按钮
-              {
-                title: "生成图片",
-                icon:
-                  isGenerating || isGeneratingPrompts ? (
-                    <RefreshCw className="h-full w-full animate-spin" />
-                  ) : (
-                    <Wand2 className="h-full w-full" />
-                  ),
-                element: (
-                  <Button
-                    onClick={handleGenerate}
-                    disabled={
-                      isGenerating ||
-                      isGeneratingPrompts ||
-                      (!prompt.trim() && !currentImageId)
-                    }
-                    className="h-full w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white border-0 cursor-pointer"
-                    title="生成图片"
-                  >
-                    {isGenerating || isGeneratingPrompts ? (
+                  : []),
+                // 生成按钮
+                {
+                  title: "生成图片",
+                  icon:
+                    isGenerating || isGeneratingPrompts ? (
                       <RefreshCw className="h-full w-full animate-spin" />
                     ) : (
                       <Wand2 className="h-full w-full" />
-                    )}
-                  </Button>
-                ),
-              },
-            ].filter((item) => {
-              if (isCompareMode) {
-                return item.id === "compare";
-              }
-              return true;
-            })}
-            desktopClassName="!bg-transparent border-0 shadow-none"
-            mobileClassName="!bg-transparent border-0 shadow-none"
-          />
-        </div>
-      </div>
-
-      {/* 提示词选择对话框 */}
-      <PromptSelectionDialog
-        open={showPromptDialog}
-        onOpenChange={setShowPromptDialog}
-        prompts={generatedPrompts}
-        onSelect={handlePromptSelect}
-        originalInput={originalUserInput}
-      />
-
-      {/* 百宝箱 */}
-      <TreasureBox
-        isOpen={showTreasureBox}
-        onClose={() => {
-          setShowTreasureBox(false);
-        }}
-        images={treasureBoxImages}
-        onImageUpload={handleTreasureBoxImageUpload}
-        onImageRemove={handleTreasureBoxImageRemove}
-        isLoadingPresetImages={isLoadingPresetImages}
-      />
-
-      {/* 拖拽预览层 */}
-      <DragOverlay>
-        {activeId && draggedImage ? (
-          <div className="w-16 h-16 opacity-90 transform rotate-3 shadow-lg">
-            <img
-              src={draggedImage.thumbnailUrl || draggedImage.url}
-              alt="拖拽预览"
-              className="w-full h-full object-cover rounded-lg border-2 border-purple-500"
+                    ),
+                  element: (
+                    <Button
+                      onClick={handleGenerate}
+                      disabled={
+                        isGenerating ||
+                        isGeneratingPrompts ||
+                        (!prompt.trim() && !currentImageId)
+                      }
+                      className="h-full w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white border-0 cursor-pointer"
+                      title="生成图片"
+                    >
+                      {isGenerating || isGeneratingPrompts ? (
+                        <RefreshCw className="h-full w-full animate-spin" />
+                      ) : (
+                        <Wand2 className="h-full w-full" />
+                      )}
+                    </Button>
+                  ),
+                },
+              ].filter((item) => {
+                if (isCompareMode) {
+                  return item.id === "compare";
+                }
+                return true;
+              })}
+              desktopClassName="mx-auto !bg-transparent border-0 shadow-none"
+              mobileClassName="!bg-transparent border-0 shadow-none"
             />
           </div>
-        ) : null}
-      </DragOverlay>
-    </div>
+        </div>
+
+        {/* 提示词选择对话框 */}
+        <PromptSelectionDialog
+          open={showPromptDialog}
+          onOpenChange={setShowPromptDialog}
+          prompts={generatedPrompts}
+          onSelect={handlePromptSelect}
+          originalInput={originalUserInput}
+        />
+
+        {/* 百宝箱 */}
+        <TreasureBox
+          isOpen={showTreasureBox}
+          onClose={() => {
+            setShowTreasureBox(false);
+          }}
+          images={treasureBoxImages}
+          onImageUpload={handleTreasureBoxImageUpload}
+          onImageRemove={handleTreasureBoxImageRemove}
+          isLoadingPresetImages={isLoadingPresetImages}
+        />
+
+        {/* 拖拽预览层 */}
+        <DragOverlay>
+          {activeId && draggedImage ? (
+            <div className="w-16 h-16 opacity-90 transform rotate-3 shadow-lg">
+              <img
+                src={draggedImage.thumbnailUrl || draggedImage.url}
+                alt="拖拽预览"
+                className="w-full h-full object-cover rounded-lg border-2 border-purple-500"
+              />
+            </div>
+          ) : null}
+        </DragOverlay>
+      </div>
     </DndContext>
   );
 }

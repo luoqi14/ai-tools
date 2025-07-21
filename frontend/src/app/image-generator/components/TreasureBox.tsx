@@ -151,12 +151,12 @@ const LoadingSkeleton: React.FC = () => {
       {Array.from({ length: 4 }).map((_, index) => (
         <div
           key={index}
-          className="relative bg-white/50 rounded-lg p-2 animate-pulse"
+          className="relative bg-white/50 rounded-lg md:p-2 animate-pulse"
         >
           <div className="flex items-center md:space-x-3">
             <Skeleton className="w-16 h-16 rounded-lg" />
             <div className="flex-1 min-w-0 hidden md:block">
-              <Skeleton className="h-4 w-24 mb-1" />
+              <Skeleton className="h-4 w-16 mb-1" />
               <Skeleton className="h-3 w-16" />
             </div>
             <div className="h-8 w-8 rounded bg-gray-200 animate-pulse hidden md:block" />

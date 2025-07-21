@@ -91,7 +91,7 @@ export function PromptSelectionDialog({
                           {promptData.chinese}
                         </div>
                       </CardDescription>
-                      <CardDescription className="text-sm leading-relaxed text-gray-400">
+                      <CardDescription className="text-xs leading-relaxed text-gray-400">
                         {promptData.reason}
                       </CardDescription>
                     </div>

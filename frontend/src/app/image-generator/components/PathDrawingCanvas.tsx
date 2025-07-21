@@ -16,6 +16,7 @@ interface PathDrawingCanvasProps {
   backgroundImage?: string;
   onPathComplete?: (pathData: string) => void;
   onImageDropped?: () => void; // 新增：图片拖拽完成回调
+  onCanvasClick?: () => void; // 新增：canvas点击回调，用于关闭Popover
   width?: number;
   height?: number;
   className?: string;
@@ -27,6 +28,7 @@ const PathDrawingCanvas: React.FC<PathDrawingCanvasProps> = ({
   backgroundImage,
   onPathComplete,
   onImageDropped,
+  onCanvasClick,
   width = typeof window !== "undefined" ? window.innerWidth : 1920,
   height = typeof window !== "undefined" ? window.innerHeight : 1080,
   className = "",
@@ -368,6 +370,16 @@ const PathDrawingCanvas: React.FC<PathDrawingCanvasProps> = ({
 
     canvas.on("mouse:down", (opt) => {
       const evt = opt.e as MouseEvent;
+
+      // 检查点击目标是否是canvas本身，避免在点击UI控件时关闭Popover
+      const target = evt.target as HTMLElement;
+      const isCanvasElement = target.tagName === 'CANVAS' || target.classList.contains('upper-canvas');
+
+      // 调用canvas点击回调，用于关闭Popover等
+      if (onCanvasClick && isCanvasElement) {
+        onCanvasClick();
+      }
+
       if (evt.altKey === true || evt.button === 1) {
         isDragging = true;
         canvas.selection = false;
@@ -424,10 +436,19 @@ const PathDrawingCanvas: React.FC<PathDrawingCanvasProps> = ({
 
     // 触摸开始事件
     const handleTouchStart = (e: TouchEvent) => {
+      // 检查触摸目标是否是canvas本身，避免在点击UI控件时关闭Popover
+      const target = e.target as HTMLElement;
+      const isCanvasElement = target.tagName === 'CANVAS' || target.classList.contains('upper-canvas');
+
+      // 调用canvas点击回调，用于关闭Popover等
+      if (onCanvasClick && e.touches.length === 1 && isCanvasElement) {
+        onCanvasClick();
+      }
+
       if (e.touches.length === 2) {
+        // 只在双指触摸时阻止默认行为和事件传播
         e.preventDefault();
         e.stopPropagation();
-
 
         const touch1 = e.touches[0];
         const touch2 = e.touches[1];
@@ -442,6 +463,7 @@ const PathDrawingCanvas: React.FC<PathDrawingCanvasProps> = ({
           canvas.isDrawingMode = false;
         }
       }
+      // 单指触摸不阻止事件传播，允许Popover等组件正常响应
     };
 
     // 触摸移动事件
@@ -939,7 +961,7 @@ const PathDrawingCanvas: React.FC<PathDrawingCanvasProps> = ({
       <canvas
         ref={canvasRef}
         className="w-full h-full"
-        style={{ touchAction: "none" }}
+        style={{ touchAction: "pan-x pan-y" }}
       />
     </div>
   );

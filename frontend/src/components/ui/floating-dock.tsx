@@ -15,7 +15,27 @@ import {
   useTransform,
 } from "motion/react";
 
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
+
+// Hook to detect if we're on mobile
+const useIsMobile = () => {
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkIsMobile = () => {
+      setIsMobile(window.innerWidth < 768); // md breakpoint is 768px
+    };
+
+    // Check on mount
+    checkIsMobile();
+
+    // Listen for resize events
+    window.addEventListener('resize', checkIsMobile);
+    return () => window.removeEventListener('resize', checkIsMobile);
+  }, []);
+
+  return isMobile;
+};
 
 export const FloatingDock = ({
   items,
@@ -33,11 +53,13 @@ export const FloatingDock = ({
   desktopClassName?: string;
   mobileClassName?: string;
 }) => {
-  return (
-    <>
-      <FloatingDockDesktop items={items} className={desktopClassName} />
-      <FloatingDockMobile items={items} className={mobileClassName} />
-    </>
+  const isMobile = useIsMobile();
+
+  // 条件渲染：只渲染一个组件
+  return isMobile ? (
+    <FloatingDockMobile items={items} className={mobileClassName} />
+  ) : (
+    <FloatingDockDesktop items={items} className={desktopClassName} />
   );
 };
 
@@ -56,24 +78,24 @@ const FloatingDockMobile = ({
 }) => {
   const [open, setOpen] = useState(false);
   return (
-    <div className={cn("relative block md:hidden", className)}>
+    <div className={cn("relative block", className)}>
       <AnimatePresence>
         {open && (
           <motion.div
             layoutId="nav"
-            className="absolute inset-x-0 bottom-full mb-2 flex flex-col gap-2 z-40"
+            className="absolute right-full top-0 mr-2 flex flex-row gap-2 z-40"
           >
             {items.map((item, idx) => (
               <motion.div
                 key={item.title}
-                initial={{ opacity: 0, y: 10 }}
+                initial={{ opacity: 0, x: 10 }}
                 animate={{
                   opacity: 1,
-                  y: 0,
+                  x: 0,
                 }}
                 exit={{
                   opacity: 0,
-                  y: 10,
+                  x: 10,
                   transition: {
                     delay: idx * 0.05,
                   },
@@ -81,7 +103,7 @@ const FloatingDockMobile = ({
                 transition={{ delay: (items.length - 1 - idx) * 0.05 }}
               >
                 {item.element ? (
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-50 dark:bg-neutral-900 bg-gray-200">
+                  <div className="h-10 w-10 rounded-full bg-gray-50 dark:bg-neutral-900 bg-gray-200 overflow-visible relative">
                     {item.element}
                   </div>
                 ) : item.href ? (
@@ -94,10 +116,7 @@ const FloatingDockMobile = ({
                   </a>
                 ) : (
                   <button
-                    onClick={() => {
-                      item?.onClick?.();
-                      setOpen(false);
-                    }}
+                    onClick={item.onClick}
                     key={item.title}
                     className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-50 dark:bg-neutral-900 bg-gray-200"
                   >
@@ -138,7 +157,7 @@ const FloatingDockDesktop = ({
       onMouseMove={(e) => mouseX.set(e.pageX)}
       onMouseLeave={() => mouseX.set(Infinity)}
       className={cn(
-        "mx-auto hidden h-16 items-end gap-4 rounded-2xl bg-gray-50 px-4 pb-3 md:flex dark:bg-neutral-900",
+        "mx-auto flex h-16 items-end gap-4 rounded-2xl bg-gray-50 px-4 pb-3 dark:bg-neutral-900",
         className
       )}
     >
