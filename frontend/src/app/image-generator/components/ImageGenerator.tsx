@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useEffect, useRef, useMemo } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import { api, ImageGenerationRequest, API_BASE_URL } from "@/lib/api";
 import { toast } from "sonner";
 import { DndContext, DragEndEvent, DragOverlay, useSensors, useSensor, PointerSensor, TouchSensor, DragStartEvent } from "@dnd-kit/core";
