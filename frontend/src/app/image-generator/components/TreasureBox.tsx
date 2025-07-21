@@ -98,11 +98,6 @@ const ImageWithSkeleton: React.FC<{
       className={`relative w-16 h-16 cursor-grab ${isDragging ? 'opacity-30 scale-90' : ''}`}
       style={{
         ...style,
-        touchAction: 'none',
-        userSelect: 'none',
-        WebkitUserSelect: 'none',
-        WebkitTouchCallout: 'none',
-        WebkitTapHighlightColor: 'transparent'
       }}
       data-dnd-kit-draggable-id={`treasure-image-${image.id}`}
       {...listeners}
@@ -123,10 +118,7 @@ const ImageWithSkeleton: React.FC<{
           !showSkeleton && isLoaded ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
         }`}
         style={{
-          touchAction: 'none',
-          userSelect: 'none',
-          WebkitUserSelect: 'none',
-          WebkitTouchCallout: 'none',
+          touchAction: 'pan-y',
           WebkitTapHighlightColor: 'transparent'
         }}
         onLoad={handleImageLoad}
@@ -270,8 +262,6 @@ export const TreasureBox: React.FC<TreasureBoxProps> = ({
     [onImageUpload, generateThumbnail]
   );
 
-  // HTML5拖拽处理函数已移除，现在使用dnd-kit的useDraggable hook
-
   return (
     <AnimatePresence>
       {isOpen && (
@@ -313,7 +303,7 @@ export const TreasureBox: React.FC<TreasureBoxProps> = ({
         </div>
 
         {/* 内容区域 */}
-        <div className="p-4 max-h-[calc(80vh-80px)] overflow-y-auto">
+        <div className="p-4 max-h-[calc(80vh-80px)] overflow-y-auto overflow-x-hidden">
           {/* 上传按钮 */}
           <div className="mb-4">
             <RainbowButton
@@ -354,7 +344,6 @@ export const TreasureBox: React.FC<TreasureBoxProps> = ({
                   </div>
                 </div>
               )}
-
               {images.map((image) => (
                 <div
                   key={image.id}

@@ -3,7 +3,7 @@
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import { api, ImageGenerationRequest, API_BASE_URL } from "@/lib/api";
 import { toast } from "sonner";
-import { DndContext, DragEndEvent, DragOverlay, useSensors, useSensor, PointerSensor, TouchSensor, DragStartEvent } from "@dnd-kit/core";
+import { DndContext, DragEndEvent, DragOverlay, useSensors, useSensor, PointerSensor, DragStartEvent } from "@dnd-kit/core";
 import { performanceMonitor, DragDropErrorHandler, initializeDragDropSystem } from "@/lib/dragDropUtils";
 
 
@@ -162,17 +162,11 @@ export default function ImageGenerator() {
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
-        distance: 8, // 需要拖拽8px才激活
-        tolerance: 5, // 容错范围
-        delay: 100, // 延迟100ms激活，避免与滚动冲突
+        distance: {
+          x: 8,
+        }, // 需要水平拖拽8px才激活
       },
     }),
-    useSensor(TouchSensor, {
-      activationConstraint: {
-        delay: 250, // 移动端延迟250ms激活，避免与滚动冲突
-        tolerance: 5,
-      },
-    })
   );
 
   // 参数状态
@@ -1225,30 +1219,30 @@ export default function ImageGenerator() {
               </div>
             )}
 
-          {/* PathDrawingCanvas - 处理所有图片展示 */}
-          {!isCompareMode && (
-            <PathDrawingCanvas
-              backgroundImage={getCurrentImage() || undefined}
-              onPathComplete={handlePathComplete}
-              onImageDropped={handleImageDropped}
-              onCanvasClick={() => {
-                setIsSettingsPopoverOpen(false);
-                setShowTreasureBox(false);
-                setOpenTooltipId(null); // 关闭所有历史图片tooltip
-              }}
-              showPathDrawing={showPathDrawing}
-              className="absolute inset-0"
-              gridConfig={{
-                enabled: showGrid,
-                size: 25,
-                color: "#e5e5e5",
-                opacity: 0.5,
-                lineWidth: 1,
-              }}
-            />
-          )}
+            {/* PathDrawingCanvas - 处理所有图片展示 */}
+            {!isCompareMode && (
+              <PathDrawingCanvas
+                backgroundImage={getCurrentImage() || undefined}
+                onPathComplete={handlePathComplete}
+                onImageDropped={handleImageDropped}
+                onCanvasClick={() => {
+                  setIsSettingsPopoverOpen(false);
+                  setShowTreasureBox(false);
+                  setOpenTooltipId(null); // 关闭所有历史图片tooltip
+                }}
+                showPathDrawing={showPathDrawing}
+                className="absolute inset-0"
+                gridConfig={{
+                  enabled: showGrid,
+                  size: 25,
+                  color: "#e5e5e5",
+                  opacity: 0.5,
+                  lineWidth: 1,
+                }}
+              />
+            )}
+          </div>
         </div>
-      </div>
 
         {/* 底部输入区域 */}
         <div className="absolute bottom-0 left-0 right-0 p-4 md:p-6">
@@ -1382,126 +1376,126 @@ export default function ImageGenerator() {
                       onClick: toggleTreasureBox,
                     },
                   ]
-                : []),
-              // 参数设置按钮
-              {
-                title: "参数设置",
-                icon: <Settings className="h-full w-full" />,
-                element: (
-                  <Popover open={isSettingsPopoverOpen} onOpenChange={setIsSettingsPopoverOpen}>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-full w-full hover:bg-gray-200 cursor-pointer"
-                        disabled={isGenerating}
-                        title="参数设置"
-                      >
-                        <Settings className="h-full w-full" />
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-80" align="center" side="top" onInteractOutside={(e) => {
+                  : []),
+                // 参数设置按钮
+                {
+                  title: "参数设置",
+                  icon: <Settings className="h-full w-full" />,
+                  element: (
+                    <Popover open={isSettingsPopoverOpen} onOpenChange={setIsSettingsPopoverOpen}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-full w-full hover:bg-gray-200 cursor-pointer"
+                          disabled={isGenerating}
+                          title="参数设置"
+                        >
+                          <Settings className="h-full w-full" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-80" align="center" side="top" onInteractOutside={(e) => {
                         // 阻止因焦点丢失而关闭popover
                         e.preventDefault();
                       }}>
-                      <div className="space-y-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="aspect-ratio">纵横比</Label>
-                          <Select
-                            value={aspectRatio}
-                            onValueChange={setAspectRatio}
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="auto">自动</SelectItem>
-                              <SelectItem value="1:1">1:1 (正方形)</SelectItem>
-                              <SelectItem value="16:9">16:9 (宽屏)</SelectItem>
-                              <SelectItem value="9:16">9:16 (竖屏)</SelectItem>
-                              <SelectItem value="3:2">3:2 (横向)</SelectItem>
-                              <SelectItem value="2:3">2:3 (纵向)</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
+                        <div className="space-y-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="aspect-ratio">纵横比</Label>
+                            <Select
+                              value={aspectRatio}
+                              onValueChange={setAspectRatio}
+                            >
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="auto">自动</SelectItem>
+                                <SelectItem value="1:1">1:1 (正方形)</SelectItem>
+                                <SelectItem value="16:9">16:9 (宽屏)</SelectItem>
+                                <SelectItem value="9:16">9:16 (竖屏)</SelectItem>
+                                <SelectItem value="3:2">3:2 (横向)</SelectItem>
+                                <SelectItem value="2:3">2:3 (纵向)</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
 
-                        <div className="space-y-2">
-                          <Label htmlFor="output-format">输出格式</Label>
-                          <Select
-                            value={outputFormat}
-                            onValueChange={setOutputFormat}
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="jpeg">JPEG</SelectItem>
-                              <SelectItem value="png">PNG</SelectItem>
-                              <SelectItem value="webp">WebP</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="output-format">输出格式</Label>
+                            <Select
+                              value={outputFormat}
+                              onValueChange={setOutputFormat}
+                            >
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="jpeg">JPEG</SelectItem>
+                                <SelectItem value="png">PNG</SelectItem>
+                                <SelectItem value="webp">WebP</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
 
-                        <div className="flex items-center justify-between">
-                          <Label htmlFor="prompt-upsampling">提示词增强</Label>
-                          <Switch
-                            id="prompt-upsampling"
-                            checked={promptUpsampling}
-                            onCheckedChange={setPromptUpsampling}
-                          />
-                        </div>
-
-                        <div className="space-y-2">
-                          <Label htmlFor="safety-tolerance">安全等级</Label>
-                          <Select
-                            value={safetyTolerance.toString()}
-                            onValueChange={(value) =>
-                              setSafetyTolerance(parseInt(value))
-                            }
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="1">1 (最严格)</SelectItem>
-                              <SelectItem value="2">2 (严格)</SelectItem>
-                              <SelectItem value="3">3 (中等)</SelectItem>
-                              <SelectItem value="4">4 (宽松)</SelectItem>
-                              <SelectItem value="5">5 (最宽松)</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        <div className="space-y-2">
                           <div className="flex items-center justify-between">
-                            <Label htmlFor="use-random-seed">随机种子</Label>
+                            <Label htmlFor="prompt-upsampling">提示词增强</Label>
                             <Switch
-                              id="use-random-seed"
-                              checked={useRandomSeed}
-                              onCheckedChange={setUseRandomSeed}
+                              id="prompt-upsampling"
+                              checked={promptUpsampling}
+                              onCheckedChange={setPromptUpsampling}
                             />
                           </div>
-                          {!useRandomSeed && (
-                            <div className="space-y-2">
-                              <Label htmlFor="seed">种子值</Label>
-                              <Input
-                                id="seed"
-                                type="text"
-                                value={seed}
-                                onChange={(e) => setSeed(e.target.value)}
-                                placeholder="输入种子值（可选）"
+
+                          <div className="space-y-2">
+                            <Label htmlFor="safety-tolerance">安全等级</Label>
+                            <Select
+                              value={safetyTolerance.toString()}
+                              onValueChange={(value) =>
+                                setSafetyTolerance(parseInt(value))
+                              }
+                            >
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="1">1 (最严格)</SelectItem>
+                                <SelectItem value="2">2 (严格)</SelectItem>
+                                <SelectItem value="3">3 (中等)</SelectItem>
+                                <SelectItem value="4">4 (宽松)</SelectItem>
+                                <SelectItem value="5">5 (最宽松)</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <Label htmlFor="use-random-seed">随机种子</Label>
+                              <Switch
+                                id="use-random-seed"
+                                checked={useRandomSeed}
+                                onCheckedChange={setUseRandomSeed}
                               />
                             </div>
-                          )}
+                            {!useRandomSeed && (
+                              <div className="space-y-2">
+                                <Label htmlFor="seed">种子值</Label>
+                                <Input
+                                  id="seed"
+                                  type="text"
+                                  value={seed}
+                                  onChange={(e) => setSeed(e.target.value)}
+                                  placeholder="输入种子值（可选）"
+                                />
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    </PopoverContent>
-                  </Popover>
-                ),
-              },
-              // 比较按钮 - 只有当前图片有源图片时才显示
-              ...(getSourceImage() && getCurrentImage()
-                ? [
+                      </PopoverContent>
+                    </Popover>
+                  ),
+                },
+                // 比较按钮 - 只有当前图片有源图片时才显示
+                ...(getSourceImage() && getCurrentImage()
+                  ? [
                     {
                       id: "compare",
                       title: isCompareMode ? "退出比较模式" : "比较图片",
@@ -1604,8 +1598,8 @@ export default function ImageGenerator() {
         />
 
         {/* 拖拽预览层 */}
-        <DragOverlay>
-          {activeId && draggedImage ? (
+        {activeId && draggedImage ? (
+          <DragOverlay>
             <div className="w-16 h-16 opacity-90 transform rotate-3 shadow-lg">
               <img
                 src={draggedImage.thumbnailUrl || draggedImage.url}
@@ -1613,8 +1607,8 @@ export default function ImageGenerator() {
                 className="w-full h-full object-cover rounded-lg border-2 border-purple-500"
               />
             </div>
-          ) : null}
-        </DragOverlay>
+          </DragOverlay>
+        ) : null}
       </div>
     </DndContext>
   );
