@@ -64,21 +64,12 @@ export const HistoryImageAnimatedTooltip = ({
     x.set(event.nativeEvent.offsetX - halfWidth); // set the x value, which is then used in transform and rotate
   };
 
-  // 处理鼠标进入事件
-  const handleMouseEnter = () => {
+  // 处理双击事件
+  const handleDoubleClick = () => {
     if (isControlled) {
       onOpenChange?.(true);
     } else {
       setInternalHoveredIndex(1);
-    }
-  };
-
-  // 处理鼠标离开事件
-  const handleMouseLeave = () => {
-    if (isControlled) {
-      onOpenChange?.(false);
-    } else {
-      setInternalHoveredIndex(null);
     }
   };
 
@@ -87,8 +78,7 @@ export const HistoryImageAnimatedTooltip = ({
   return (
     <div
       className="group relative"
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
+      onDoubleClick={handleDoubleClick}
     >
       <AnimatePresence mode="popLayout">
         {isTooltipOpen && (

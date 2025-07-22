@@ -555,21 +555,26 @@ export default function ImageGenerator() {
 
       if (taskData.status === "completed") {
         // setProgress(100);
-        setIsGenerating(false);
-        showToast("success", "图片生成成功！", "您可以预览和下载生成的图片");
-
-        // 生成成功后重置所有状态
-        if (showPathDrawing) {
-          setShowPathDrawing(false);
-        }
-
-        // 清除canvas上的路径和拖拽的图片
-        clearCanvasContent();
 
         // 添加到历史记录
         if (taskData.result?.image_url) {
           // 先获取blob URL，然后统一使用blob URL保存到历史记录
           getBlobUrl(taskData.result.image_url).then(async (blobUrl) => {
+            // 定义图片加载完成后的操作
+            const handleImageLoadComplete = () => {
+              // 在图片实际显示给用户后再执行这些操作
+              setIsGenerating(false);
+              showToast("success", "图片生成成功！", "您可以预览和下载生成的图片");
+
+              // 生成成功后重置所有状态
+              if (showPathDrawing) {
+                setShowPathDrawing(false);
+              }
+
+              // 清除canvas上的路径和拖拽的图片
+              clearCanvasContent();
+            };
+
             try {
               // 生成缩略图
               const thumbnailUrl = await generateThumbnail(blobUrl);
@@ -596,6 +601,12 @@ export default function ImageGenerator() {
               setHistoryImages((prev) => [...prev.slice(-19), newHistoryItem]); // 保留最近20张图片，新的在后
               selectHistoryImage(newHistoryItem);
               setCurrentImageId(newHistoryItem.id);
+
+              // 等待图片实际加载完成后再执行后续操作
+              const img = new Image();
+              img.onload = handleImageLoadComplete;
+              img.onerror = handleImageLoadComplete; // 即使加载失败也要执行后续操作
+              img.src = blobUrl;
             } catch (error) {
               console.error("生成缩略图失败:", error);
               // 如果缩略图生成失败，仍然添加原图
@@ -619,6 +630,12 @@ export default function ImageGenerator() {
               setHistoryImages((prev) => [...prev.slice(-19), newHistoryItem]); // 保留最近20张图片，新的在后
               selectHistoryImage(newHistoryItem);
               setCurrentImageId(newHistoryItem.id);
+
+              // 等待图片实际加载完成后再执行后续操作
+              const img = new Image();
+              img.onload = handleImageLoadComplete;
+              img.onerror = handleImageLoadComplete; // 即使加载失败也要执行后续操作
+              img.src = blobUrl;
             }
           });
         }
@@ -1190,7 +1207,7 @@ export default function ImageGenerator() {
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
-      <div className="h-screen bg-gradient-to-br from-slate-50 to-slate-100 relative">
+      <div className="h-screen bg-gradient-to-br from-slate-50 to-slate-100 relative overflow-hidden">
         {/* 主要内容区域 - 图片展示 */}
         <div className="flex items-center justify-center h-full">
           <div className="w-full h-full flex items-center justify-center">
@@ -1283,7 +1300,11 @@ export default function ImageGenerator() {
                                 WebkitTouchCallout: 'none',
                                 WebkitTapHighlightColor: 'transparent'
                               }}
-                              onClick={() => selectHistoryImage(item)}
+                              onClick={() => {
+                                selectHistoryImage(item);
+                                // 单击隐藏tooltip
+                                setOpenTooltipId(null);
+                              }}
                             >
                               <img
                                 src={item.thumbnailUrl || item.url} // 优先使用缩略图，如果不存在则使用原图
@@ -1311,13 +1332,13 @@ export default function ImageGenerator() {
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               placeholder="用英文描述您想要生成的图片..."
-              className="min-h-[80px] resize-none bg-white/50 backdrop-blur-md border-input placeholder:text-gray-400 focus-visible:border-color-none focus-visible:ring-0 focus-visible:ring-offset-0 rounded-2xl"
+              className="min-h-[80px] resize-none bg-white/50 backdrop-blur-md border-input placeholder:text-gray-400 focus-visible:border-color-none focus-visible:ring-0 focus-visible:ring-offset-0 rounded-2xl z-2 relative"
               disabled={isGenerating}
             />
           </div>
 
           {/* Floating Dock控制区域 */}
-          <div className="flex justify-center md:justify-center max-md:justify-end">
+          <div className="relative flex justify-center md:justify-center max-md:justify-end z-10">
             <FloatingDock
               items={[
                 // 清空图片按钮
@@ -1394,18 +1415,18 @@ export default function ImageGenerator() {
                           <Settings className="h-full w-full" />
                         </Button>
                       </PopoverTrigger>
-                      <PopoverContent className="w-80" align="center" side="top" onInteractOutside={(e) => {
+                      <PopoverContent className="w-80 max-w-[100vw]" align="center" side="top" onInteractOutside={(e) => {
                         // 阻止因焦点丢失而关闭popover
                         e.preventDefault();
                       }}>
                         <div className="space-y-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="aspect-ratio">纵横比</Label>
+                          <div className="flex items-center justify-between">
+                            <Label htmlFor="aspect-ratio" className="text-sm font-medium">纵横比</Label>
                             <Select
                               value={aspectRatio}
                               onValueChange={setAspectRatio}
                             >
-                              <SelectTrigger>
+                              <SelectTrigger className="w-40">
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
@@ -1419,41 +1440,31 @@ export default function ImageGenerator() {
                             </Select>
                           </div>
 
-                          <div className="space-y-2">
-                            <Label htmlFor="output-format">输出格式</Label>
+                          <div className="flex items-center justify-between">
+                            <Label htmlFor="output-format" className="text-sm font-medium">输出格式</Label>
                             <Select
                               value={outputFormat}
                               onValueChange={setOutputFormat}
                             >
-                              <SelectTrigger>
+                              <SelectTrigger className="w-40">
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
                                 <SelectItem value="jpeg">JPEG</SelectItem>
                                 <SelectItem value="png">PNG</SelectItem>
-                                <SelectItem value="webp">WebP</SelectItem>
                               </SelectContent>
                             </Select>
                           </div>
 
                           <div className="flex items-center justify-between">
-                            <Label htmlFor="prompt-upsampling">提示词增强</Label>
-                            <Switch
-                              id="prompt-upsampling"
-                              checked={promptUpsampling}
-                              onCheckedChange={setPromptUpsampling}
-                            />
-                          </div>
-
-                          <div className="space-y-2">
-                            <Label htmlFor="safety-tolerance">安全等级</Label>
+                            <Label htmlFor="safety-tolerance" className="text-sm font-medium">安全等级</Label>
                             <Select
                               value={safetyTolerance.toString()}
                               onValueChange={(value) =>
                                 setSafetyTolerance(parseInt(value))
                               }
                             >
-                              <SelectTrigger>
+                              <SelectTrigger className="w-40">
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
@@ -1466,28 +1477,37 @@ export default function ImageGenerator() {
                             </Select>
                           </div>
 
-                          <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <Label htmlFor="prompt-upsampling" className="text-sm font-medium">提示词增强</Label>
+                            <Switch
+                              id="prompt-upsampling"
+                              checked={promptUpsampling}
+                              onCheckedChange={setPromptUpsampling}
+                            />
+                          </div>
+
+                          <div className="flex items-center justify-between">
+                            <Label htmlFor="use-random-seed" className="text-sm font-medium">随机种子</Label>
+                            <Switch
+                              id="use-random-seed"
+                              checked={useRandomSeed}
+                              onCheckedChange={setUseRandomSeed}
+                            />
+                          </div>
+
+                          {!useRandomSeed && (
                             <div className="flex items-center justify-between">
-                              <Label htmlFor="use-random-seed">随机种子</Label>
-                              <Switch
-                                id="use-random-seed"
-                                checked={useRandomSeed}
-                                onCheckedChange={setUseRandomSeed}
+                              <Label htmlFor="seed" className="text-sm font-medium">种子值</Label>
+                              <Input
+                                id="seed"
+                                type="text"
+                                value={seed}
+                                onChange={(e) => setSeed(e.target.value)}
+                                placeholder="输入种子值（可选）"
+                                className="w-40"
                               />
                             </div>
-                            {!useRandomSeed && (
-                              <div className="space-y-2">
-                                <Label htmlFor="seed">种子值</Label>
-                                <Input
-                                  id="seed"
-                                  type="text"
-                                  value={seed}
-                                  onChange={(e) => setSeed(e.target.value)}
-                                  placeholder="输入种子值（可选）"
-                                />
-                              </div>
-                            )}
-                          </div>
+                          )}
                         </div>
                       </PopoverContent>
                     </Popover>

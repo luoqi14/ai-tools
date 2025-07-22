@@ -83,7 +83,7 @@ const FloatingDockMobile = ({
         {open && (
           <motion.div
             layoutId="nav"
-            className="absolute right-full top-0 mr-2 flex flex-row gap-2 z-40"
+            className="absolute right-full top-0 mr-2 flex flex-row gap-2 z-40 overflow-x-auto w-[calc(100vw-72px)]"
           >
             {items.map((item, idx) => (
               <motion.div
@@ -101,6 +101,7 @@ const FloatingDockMobile = ({
                   },
                 }}
                 transition={{ delay: (items.length - 1 - idx) * 0.05 }}
+                className="first:ml-auto"
               >
                 {item.element ? (
                   <div className="h-10 w-10 rounded-full bg-gray-50 dark:bg-neutral-900 bg-gray-200 overflow-visible relative">
