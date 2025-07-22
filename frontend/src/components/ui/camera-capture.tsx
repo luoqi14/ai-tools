@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import NextImage from "next/image";
 import { Button } from "@/components/ui/button";
 import { Camera, X, RotateCcw, Check } from "lucide-react";
 
@@ -191,7 +192,7 @@ export function CameraCapture({
     // 为了确保可靠性，总是重新启动摄像头
     console.log("重拍：强制重新启动摄像头");
     await startCamera();
-  }, [startCamera]);
+  }, [startCamera, isStreaming]);
 
   const confirmCapture = useCallback(() => {
     if (!capturedImage) return;
@@ -243,7 +244,7 @@ export function CameraCapture({
     return () => {
       stopCamera();
     };
-  }, []);
+  }, [startCamera, stopCamera]);
 
   return (
     <div className={`fixed inset-0 z-50 bg-black ${className}`}>
@@ -275,10 +276,13 @@ export function CameraCapture({
         {capturedImage ? (
           /* 显示拍摄的照片 */
           <div className="relative w-full max-w-sm mx-auto">
-            <img
+            <NextImage
               src={capturedImage}
               alt="拍摄的照片"
+              width={400}
+              height={300}
               className="w-full h-auto rounded-lg shadow-lg"
+              unoptimized={true} // 拍摄的照片是blob URL，需要跳过优化
             />
           </div>
         ) : (

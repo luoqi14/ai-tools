@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useCallback, useEffect, useRef } from "react";
+import React, { useState, useCallback, useEffect, useRef, useMemo } from "react";
+import NextImage from "next/image";
 import { api, ImageGenerationRequest, API_BASE_URL } from "@/lib/api";
 import { toast } from "sonner";
 import { DndContext, DragEndEvent, DragOverlay, useSensors, useSensor, PointerSensor, DragStartEvent } from "@dnd-kit/core";
@@ -82,6 +83,8 @@ import { Compare } from "@/components/ui/compare";
 // 导入Magic UI组件
 // import { Lens } from "@/components/magicui/lens";
 // import { BorderBeam } from "@/components/magicui/border-beam";
+import { PixelImage } from "@/components/magicui/pixel-image";
+import { SparklesText } from "@/components/magicui/sparkles-text";
 
 // 导入Floating Dock组件
 import { FloatingDock } from "@/components/ui/floating-dock";
@@ -244,6 +247,11 @@ export default function ImageGenerator() {
   const hasLoadedPresetImages = useRef(false);
   const [isLoadingPresetImages, setIsLoadingPresetImages] = useState(false);
 
+  // 图片预览状态
+  const [showImagePreview, setShowImagePreview] = useState(false);
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+  const [isLoadingPreview, setIsLoadingPreview] = useState(false);
+
   // 生成缩略图的通用函数
   const generateThumbnail = useCallback(
     (imageUrl: string, maxSize = 200, quality = 0.8): Promise<string> => {
@@ -301,8 +309,8 @@ export default function ImageGenerator() {
     []
   );
 
-  // 预设图片数据
-  const presetImages = [
+  // 预设图片数据 - 使用 useMemo 避免每次渲染时重新创建
+  const presetImages = useMemo(() => [
     { name: "太阳帽.png", src: 太阳帽.src },
     { name: "手提包.png", src: 手提包.src },
     { name: "水晶鞋.png", src: 水晶鞋.src },
@@ -310,7 +318,7 @@ export default function ImageGenerator() {
     { name: "自行车.png", src: 自行车.src },
     { name: "连衣裙.png", src: 连衣裙.src },
     { name: "项链.png", src: 项链.src },
-  ];
+  ], []); // 空依赖数组，因为这些是静态导入的图片
 
   // 计算当前图片
   const getCurrentImage = (): string | null => {
@@ -564,6 +572,7 @@ export default function ImageGenerator() {
             const handleImageLoadComplete = () => {
               // 在图片实际显示给用户后再执行这些操作
               setIsGenerating(false);
+              setPrompt("");
               showToast("success", "图片生成成功！", "您可以预览和下载生成的图片");
 
               // 生成成功后重置所有状态
@@ -1043,13 +1052,71 @@ export default function ImageGenerator() {
     generateImageWithPrompt(selectedPrompt);
   };
 
+  // 检测是否为移动设备
+  const isMobileDevice = () => {
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+      (window.innerWidth <= 768);
+  };
+
+  // 显示图片预览（移动端）
+  const showImagePreviewModal = async (imageUrl: string) => {
+    setIsLoadingPreview(true);
+    showToast("info", "预览图片生成中", "请稍候...");
+
+    setTimeout(async () => {
+      // 预加载图片以确保快速显示
+      await new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = resolve;
+        img.onerror = reject;
+        img.src = imageUrl;
+      });
+
+      setPreviewImageUrl(imageUrl);
+      setShowImagePreview(true);
+      setIsLoadingPreview(false);
+    }, 1);
+  };
+
+  // 关闭图片预览
+  const closeImagePreview = () => {
+    setShowImagePreview(false);
+    setPreviewImageUrl(null);
+  };
+
+  // 监听ESC键关闭预览
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && showImagePreview) {
+        closeImagePreview();
+      }
+    };
+
+    if (showImagePreview) {
+      document.addEventListener('keydown', handleKeyDown);
+      // 防止背景滚动
+      document.body.style.overflow = 'hidden';
+    }
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = '';
+    };
+  }, [showImagePreview]);
+
   const downloadImage = () => {
     const imageUrl = getCurrentImage();
     if (imageUrl) {
-      const link = document.createElement("a");
-      link.href = imageUrl;
-      link.download = `generated-image-${Date.now()}.${outputFormat}`;
-      link.click();
+      if (isMobileDevice()) {
+        // 移动设备：显示预览
+        showImagePreviewModal(imageUrl);
+      } else {
+        // 桌面设备：直接下载
+        const link = document.createElement("a");
+        link.href = imageUrl;
+        link.download = `generated-image-${Date.now()}.${outputFormat}`;
+        link.click();
+      }
     }
   };
 
@@ -1262,7 +1329,7 @@ export default function ImageGenerator() {
         </div>
 
         {/* 底部输入区域 */}
-        <div className="absolute bottom-0 left-0 right-0 p-4 md:p-6">
+        <div className="absolute bottom-0 left-0 right-0 p-4 md:p-6 z-10">
           <div className="max-w-4xl mx-auto mb-4">
             {/* 历史图片展示 */}
             {historyImages.length > 0 && (
@@ -1306,10 +1373,13 @@ export default function ImageGenerator() {
                                 setOpenTooltipId(null);
                               }}
                             >
-                              <img
+                              <NextImage
                                 src={item.thumbnailUrl || item.url} // 优先使用缩略图，如果不存在则使用原图
                                 alt={`历史图片 ${item.id}`}
+                                width={64}
+                                height={64}
                                 className="w-full h-full object-cover hover:scale-105"
+                                unoptimized={true} // 历史图片通常是blob URL，需要跳过优化
                               />
                               {currentImageId === item.id && (
                                 <div className="absolute inset-0 bg-purple-500/10 flex items-center justify-center">
@@ -1548,11 +1618,13 @@ export default function ImageGenerator() {
                 ...(getCurrentImage()
                   ? [
                     {
-                      title: "下载图片",
-                      icon: (
+                      title: isLoadingPreview ? "准备预览中..." : "下载图片",
+                      icon: isLoadingPreview ? (
+                        <RefreshCw className="h-full w-full text-blue-600 animate-spin" />
+                      ) : (
                         <Download className="h-full w-full text-green-600 cursor-pointer" />
                       ),
-                      onClick: downloadImage,
+                      onClick: isLoadingPreview ? undefined : downloadImage,
                     },
                   ]
                   : []),
@@ -1621,14 +1693,63 @@ export default function ImageGenerator() {
         {activeId && draggedImage ? (
           <DragOverlay>
             <div className="w-16 h-16 opacity-90 transform rotate-3 shadow-lg">
-              <img
+              <NextImage
                 src={draggedImage.thumbnailUrl || draggedImage.url}
                 alt="拖拽预览"
+                width={64}
+                height={64}
                 className="w-full h-full object-cover rounded-lg border-2 border-purple-500"
+                unoptimized={true} // 拖拽图片通常是blob URL，需要跳过优化
               />
             </div>
           </DragOverlay>
         ) : null}
+
+        {/* 图片预览模态框 - 移动端 */}
+        {showImagePreview && previewImageUrl && (
+          <div
+            className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4"
+          >
+            <div
+              className="relative max-w-full max-h-full flex items-center justify-center"
+              onClick={(e) => e.stopPropagation()} // 防止点击图片区域时关闭模态框
+            >
+              {/* 关闭按钮 */}
+              <button
+                onClick={closeImagePreview}
+                className="absolute -top-2 -right-2 z-10 w-12 h-12 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center text-white hover:bg-white/30 transition-colors shadow-lg"
+                aria-label="关闭预览"
+              >
+                <X className="w-6 h-6" />
+              </button>
+
+              {/* 图片预览容器 */}
+              <div className="flex flex-col items-center space-y-6">
+                <div className="relative bg-white/5 backdrop-blur-sm rounded-3xl p-4 shadow-2xl">
+                  <PixelImage
+                    src={previewImageUrl}
+                    grid="8x8"
+                    grayscaleAnimation={true}
+                    pixelFadeInDuration={800}
+                    maxAnimationDelay={1000}
+                    colorRevealDelay={1200}
+                  />
+                </div>
+
+                {/* 保存提示 - 使用 SparklesText */}
+                <div className="text-center">
+                  <SparklesText
+                    className="text-white text-lg md:text-xl font-medium"
+                    colors={{ first: "#60A5FA", second: "#F472B6" }}
+                    sparklesCount={8}
+                  >
+                    长按图片保存到相册
+                  </SparklesText>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </DndContext>
   );

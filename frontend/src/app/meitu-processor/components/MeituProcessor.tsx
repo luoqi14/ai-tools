@@ -1,5 +1,6 @@
 "use client";
 
+import NextImage from "next/image";
 import {
   useState,
   useEffect,
@@ -431,10 +432,6 @@ export default function MeituProcessor() {
     isPending: isParametersPending,
   } = useOptimizedParameters({});
 
-  useEffect(() => {
-    loadFunctions();
-  }, []);
-
   const loadFunctions = useCallback(async () => {
     try {
       const response = await api.getMeituFunctions();
@@ -463,6 +460,10 @@ export default function MeituProcessor() {
       toast.error("加载功能配置失败");
     }
   }, [resetParameters]);
+
+  useEffect(() => {
+    loadFunctions();
+  }, [loadFunctions]);
 
   const pollTaskStatus = useCallback(async (taskId: string) => {
     setIsPolling(true);
@@ -790,9 +791,11 @@ export default function MeituProcessor() {
             {currentImageUrl && !result && (
               <div className="flex items-center justify-center h-full">
                 <div className="relative rounded-lg overflow-hidden">
-                  <img
+                  <NextImage
                     src={currentImageUrl}
                     alt="待处理图片"
+                    width={imageDimensions?.width || 800}
+                    height={imageDimensions?.height || 600}
                     className="object-contain rounded-lg"
                     style={{
                       width: imageDimensions?.width || "auto",
@@ -918,10 +921,13 @@ export default function MeituProcessor() {
                                 setCustomImage("");
                               }}
                             >
-                              <img
+                              <NextImage
                                 src={image.url}
                                 alt={image.name}
+                                width={120}
+                                height={120}
                                 className="w-full h-full object-cover"
+                                unoptimized={true} // 预设图片可能是静态资源，但为了保险起见跳过优化
                               />
                               {selectedImage === image.url && (
                                 <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">

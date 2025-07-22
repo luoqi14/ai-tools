@@ -630,7 +630,7 @@ const PathDrawingCanvas: React.FC<PathDrawingCanvasProps> = ({
   // 监听showPathDrawing变化，更新模式
   useEffect(() => {
     updateCanvasMode();
-  }, [showPathDrawing]);
+  }, [showPathDrawing, updateCanvasMode]);
 
   // 监听网格配置变化，更新网格背景
   useEffect(() => {

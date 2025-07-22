@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useRef, useCallback, useState, useEffect } from "react";
+import NextImage from "next/image";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 // import {
@@ -111,12 +112,15 @@ const ImageWithSkeleton: React.FC<{
       )}
 
       {/* 实际图片 - 带有淡入效果 */}
-      <img
+      <NextImage
         src={image.thumbnailUrl || image.url}
         alt="宝箱图片"
+        width={64}
+        height={64}
         className={`w-16 h-16 object-cover rounded-lg transition-all duration-300 ease-in-out ${
           !showSkeleton && isLoaded ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
         }`}
+        unoptimized={true} // 宝箱图片通常是blob URL，需要跳过优化
         style={{
           touchAction: 'pan-y',
           WebkitTapHighlightColor: 'transparent'

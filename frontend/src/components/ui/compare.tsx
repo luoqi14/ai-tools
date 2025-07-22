@@ -1,5 +1,6 @@
 "use client";
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import NextImage from "next/image";
 import { SparklesCore } from "@/components/ui/sparkles";
 import { AnimatePresence, motion } from "motion/react";
 import { cn } from "@/lib/utils";
@@ -197,14 +198,17 @@ export const Compare = ({
               }}
               transition={{ duration: 0 }}
             >
-              <img
+              <NextImage
                 alt="first image"
                 src={firstImage}
+                width={800}
+                height={600}
                 className={cn(
                   "absolute inset-0  z-20 rounded-2xl shrink-0 w-full h-full select-none",
                   firstImageClassName
                 )}
                 draggable={false}
+                unoptimized={firstImage.startsWith('data:') || firstImage.startsWith('blob:')}
               />
             </motion.div>
           ) : null}
