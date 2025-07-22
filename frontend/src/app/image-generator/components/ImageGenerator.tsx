@@ -1331,7 +1331,7 @@ export default function ImageGenerator() {
             <Textarea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              placeholder="用英文描述您想要生成的图片..."
+              placeholder="描述您想要生成的图片..."
               className="min-h-[80px] resize-none bg-white/50 backdrop-blur-md border-input placeholder:text-gray-400 focus-visible:border-color-none focus-visible:ring-0 focus-visible:ring-offset-0 rounded-2xl z-2 relative"
               disabled={isGenerating}
             />
