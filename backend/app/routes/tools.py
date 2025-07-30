@@ -61,6 +61,14 @@ TOOLS_DATA = [
         'icon': 'Sparkles',
         'category': 'ai',
         'url': '/meitu-processor'
+    },
+    {
+        'id': 'performance-score',
+        'name': '绩效计分',
+        'description': '绩效评估和计分工具',
+        'icon': 'BarChart3',
+        'category': 'business',
+        'url': 'https://tools-performance-score.lumiidental.com'
     }
 ]
 

@@ -7,6 +7,8 @@ import {
   Mail,
   Video,
   Palette,
+  BarChart3,
+  Sparkles,
   LucideIcon,
 } from "lucide-react";
 
@@ -19,6 +21,8 @@ const iconMap: Record<string, LucideIcon> = {
   Mail,
   Video,
   Palette,
+  BarChart3,
+  Sparkles,
 };
 
 interface ToolCardProps {
