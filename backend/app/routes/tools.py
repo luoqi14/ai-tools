@@ -69,6 +69,14 @@ TOOLS_DATA = [
         'icon': 'BarChart3',
         'category': 'business',
         'url': 'https://tools-performance-score.lumiidental.com'
+    },
+    {
+        'id': 'customer-recall',
+        'name': '客户召回',
+        'description': '客户召回管理工具',
+        'icon': 'Users',
+        'category': 'business',
+        'url': 'https://tools-customer-recall.lumiidental.com'
     }
 ]
 
