@@ -14,9 +14,9 @@ meitu_bp = Blueprint('meitu', __name__)
 
 # 美图API配置 - 使用真实密钥
 MEITU_API_CONFIG = {
-    'app_id': '358162',
-    'api_key': '72585d8db5084613989dce2baefe09a0',
-    'api_secret': '6ec41b8f4f7e4768919440fe1ceca19a',
+    'app_id': '358637',
+    'api_key': 'faa4cf4edd3b4d28b14f2d16b2f0a2f5',
+    'api_secret': '122eec6e5f9249d5bb2cade3f4ba24d8',
     'base_url': 'https://api.yunxiu.meitu.com',
     'process_endpoint': '/openapi/super_realphotolocal_async',
     'query_endpoint': '/openapi/query'
