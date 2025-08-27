@@ -12,7 +12,7 @@ TOOLS_DATA = [
         'description': '群发邮件工具',
         'icon': 'Mail',
         'category': 'communication',
-        'url': 'https://tools-old.lumiidental.com/email'
+        'url': 'https://tools-old.jarvismedical.asia/email'
     },
     {
         'id': 'invisalign-split',
@@ -20,7 +20,7 @@ TOOLS_DATA = [
         'description': '文本文件处理',
         'icon': 'FileText',
         'category': 'file',
-        'url': 'https://tools-old.lumiidental.com/file/ysm/'
+        'url': 'https://tools-old.jarvismedical.asia/file/ysm/'
     },
     {
         'id': 'supplier-split',
@@ -28,7 +28,7 @@ TOOLS_DATA = [
         'description': '文本文件处理',
         'icon': 'FileText',
         'category': 'file',
-        'url': 'https://tools-old.lumiidental.com/file/supplier/'
+        'url': 'https://tools-old.jarvismedical.asia/file/supplier/'
     },
     {
         'id': 'mm-image-recognition',
@@ -36,7 +36,7 @@ TOOLS_DATA = [
         'description': '图片识别输出结构化数据',
         'icon': 'Image',
         'category': 'ai',
-        'url': 'https://tools-old.lumiidental.com/image/recognition/'
+        'url': 'https://tools-old.jarvismedical.asia/image/recognition/'
     },
     {
         'id': 'video-enhance',
@@ -44,7 +44,7 @@ TOOLS_DATA = [
         'description': 'LLM输入视频分析及调用ffmpeg处理',
         'icon': 'Video',
         'category': 'ai',
-        'url': 'https://tools-video.lumiidental.com'
+        'url': 'https://tools-video.jarvismedical.asia'
     },
     {
         'id': 'image-generator',
@@ -68,7 +68,7 @@ TOOLS_DATA = [
         'description': '绩效评估和计分工具',
         'icon': 'BarChart3',
         'category': 'business',
-        'url': 'https://tools-performance-score.lumiidental.com'
+        'url': 'https://tools-performance-score.jarvismedical.asia'
     },
     {
         'id': 'customer-recall',
@@ -76,7 +76,7 @@ TOOLS_DATA = [
         'description': '客户召回管理工具',
         'icon': 'Users',
         'category': 'business',
-        'url': 'https://tools-customer-recall.lumiidental.com'
+        'url': 'https://tools-customer-recall.jarvismedical.asia'
     }
 ]
 
