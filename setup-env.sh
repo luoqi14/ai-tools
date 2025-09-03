@@ -71,6 +71,10 @@ CORS_ORIGINS=https://ai.jarvismedical.asia,http://localhost:3003
 # 请替换为您的 Gemini API 密钥
 GEMINI_API_KEY=your-gemini-api-key-here
 GEMINI_MODEL=gemini-2.5-flash
+
+# Nano Banana (Gemini 2.5 Flash Image) 配置
+# 请替换为您的 Nano Banana API 密钥
+NANO_BANANA_API_KEY=your-nano-banana-api-key-here
 EOF
 
     print_message ".env 文件创建成功"
@@ -93,6 +97,11 @@ verify_env() {
             print_warning "GEMINI_API_KEY 未设置或使用默认值，Gemini 功能将不可用"
         fi
 
+        # 检查 Nano Banana API 密钥（警告而不是错误，因为可能不是必需的）
+        if [ -z "$NANO_BANANA_API_KEY" ] || [ "$NANO_BANANA_API_KEY" = "your-nano-banana-api-key-here" ]; then
+            print_warning "NANO_BANANA_API_KEY 未设置或使用默认值，Nano Banana 功能将不可用"
+        fi
+
         print_message "环境变量验证通过"
         echo "  BFL_API_KEY: ${BFL_API_KEY:0:8}..."
         echo "  FLASK_ENV: $FLASK_ENV"
@@ -101,6 +110,9 @@ verify_env() {
         if [ -n "$GEMINI_API_KEY" ] && [ "$GEMINI_API_KEY" != "your-gemini-api-key-here" ]; then
             echo "  GEMINI_API_KEY: ${GEMINI_API_KEY:0:8}..."
             echo "  GEMINI_MODEL: $GEMINI_MODEL"
+        fi
+        if [ -n "$NANO_BANANA_API_KEY" ] && [ "$NANO_BANANA_API_KEY" != "your-nano-banana-api-key-here" ]; then
+            echo "  NANO_BANANA_API_KEY: ${NANO_BANANA_API_KEY:0:8}..."
         fi
         
         return 0
