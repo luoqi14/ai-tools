@@ -20,6 +20,7 @@ rm -rf node_modules/
 
 # 删除环境文件（保留 .env.example）
 echo "删除环境文件..."
+rm -f .env
 rm -f .env.local
 rm -f .env.production
 rm -f .env.development.local

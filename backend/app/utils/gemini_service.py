@@ -1,7 +1,12 @@
 import os
 import json
+import base64
+import requests
+from abc import ABC, abstractmethod
 from google import genai
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional, Union
+from io import BytesIO
+from PIL import Image
 
 class GeminiService:
     def __init__(self):
@@ -208,9 +213,13 @@ class GeminiService:
         
         # 如果有图片输入，添加图片到内容中
         if input_image and input_image_mime_type:
-            from google.genai import types
-            image_part = types.Part.from_bytes(data=input_image, mime_type=input_image_mime_type)
-            contents.append(image_part)
+            try:
+                from google.genai import types
+                image_part = types.Part.from_bytes(data=input_image, mime_type=input_image_mime_type)
+                contents.append(image_part)
+            except ImportError:
+                # 如果导入失败，跳过图片处理
+                pass
         
         # 如果既没有文本也没有图片，添加默认提示
         if not contents:
@@ -223,7 +232,29 @@ class GeminiService:
                 config=genai.types.GenerateContentConfig(
                     system_instruction=system_instruction,
                     temperature=1.0,
-                    response_mime_type='application/json'
+                    response_mime_type='application/json',
+                    safety_settings=[
+                        genai.types.SafetySetting(
+                            category=genai.types.HarmCategory.HARM_CATEGORY_HARASSMENT,
+                            threshold=genai.types.HarmBlockThreshold.OFF
+                        ),
+                        genai.types.SafetySetting(
+                            category=genai.types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+                            threshold=genai.types.HarmBlockThreshold.OFF
+                        ),
+                        genai.types.SafetySetting(
+                            category=genai.types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+                            threshold=genai.types.HarmBlockThreshold.OFF
+                        ),
+                        genai.types.SafetySetting(
+                            category=genai.types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+                            threshold=genai.types.HarmBlockThreshold.OFF
+                        ),
+                        genai.types.SafetySetting(
+                            category=genai.types.HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY,
+                            threshold=genai.types.HarmBlockThreshold.OFF
+                        )
+                    ]
                 )
             )
             
@@ -233,7 +264,7 @@ class GeminiService:
             
             # 验证和处理提示词数据
             prompts = []
-            for i, prompt_obj in enumerate(prompts_data):
+            for prompt_obj in prompts_data:
                 if isinstance(prompt_obj, dict) and all(key in prompt_obj for key in ['chinese', 'english', 'reason']):
                     prompts.append({
                         'chinese': prompt_obj['chinese'],
@@ -269,3 +300,448 @@ def get_gemini_service():
         except ValueError as e:
             raise Exception(f"Gemini服务初始化失败: {str(e)}")
     return gemini_service
+
+
+# ==================== 图像生成服务抽象层 ====================
+
+class ImageGenerationService(ABC):
+    """
+    图像生成服务抽象基类
+    定义统一的图像生成接口，支持多种模型切换
+    """
+
+    @abstractmethod
+    def generate_image(self, prompt: str, input_image: Optional[Union[bytes, Image.Image]] = None,
+                      **kwargs) -> Dict[str, Any]:
+        """
+        生成图像的抽象方法
+
+        Args:
+            prompt: 文本提示词
+            input_image: 可选的输入图像（用于图生图）
+            **kwargs: 其他模型特定参数
+
+        Returns:
+            Dict[str, Any]: 统一格式的响应
+            {
+                'success': bool,
+                'task_id': str,  # 任务ID（如果是异步）
+                'image_data': str,  # base64编码的图像数据（如果是同步）
+                'polling_url': str,  # 轮询URL（如果是异步）
+                'message': str  # 错误信息或状态信息
+            }
+        """
+        pass
+
+    @abstractmethod
+    def get_task_status(self, task_id: str) -> Dict[str, Any]:
+        """
+        查询任务状态的抽象方法
+
+        Args:
+            task_id: 任务ID
+
+        Returns:
+            Dict[str, Any]: 任务状态信息
+            {
+                'success': bool,
+                'status': str,  # pending, running, completed, failed
+                'result': Dict,  # 结果数据
+                'error': str  # 错误信息
+            }
+        """
+        pass
+
+    @abstractmethod
+    def get_model_config(self) -> Dict[str, Any]:
+        """
+        获取模型配置信息
+
+        Returns:
+            Dict[str, Any]: 模型配置
+            {
+                'name': str,
+                'display_name': str,
+                'parameters': Dict  # 可配置参数
+            }
+        """
+        pass
+
+
+class NanoBananaService(ImageGenerationService):
+    """
+    Nano Banana (Gemini 2.5 Flash Image Preview) 图像生成服务
+    """
+
+    def __init__(self):
+        # 使用专用的 Nano Banana API 密钥
+        self.api_key = os.getenv('NANO_BANANA_API_KEY')
+        if not self.api_key:
+            raise ValueError("NANO_BANANA_API_KEY environment variable is required")
+
+        # 初始化 Gemini 客户端
+        self.client = genai.Client(api_key=self.api_key)
+        self.model_name = "gemini-2.5-flash-image-preview"
+
+    def generate_image(self, prompt: str, input_image: Optional[Union[bytes, Image.Image]] = None,
+                      **_kwargs) -> Dict[str, Any]:
+        """
+        使用 Nano Banana 生成图像
+        """
+        try:
+            # 构建内容列表
+            contents = [prompt]
+
+            # 处理输入图像
+            if input_image is not None:
+                if isinstance(input_image, bytes):
+                    # 如果是字节数据，转换为PIL Image
+                    pil_image = Image.open(BytesIO(input_image))
+                    contents.append(pil_image)
+                elif isinstance(input_image, Image.Image):
+                    # 如果已经是PIL Image，直接使用
+                    contents.append(input_image)
+                else:
+                    return {
+                        'success': False,
+                        'message': '不支持的图像格式'
+                    }
+
+            # 调用 Gemini API
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=contents,
+                config=genai.types.GenerateContentConfig(
+                    safety_settings=[
+                        genai.types.SafetySetting(
+                            category=genai.types.HarmCategory.HARM_CATEGORY_HARASSMENT,
+                            threshold=genai.types.HarmBlockThreshold.OFF
+                        ),
+                        genai.types.SafetySetting(
+                            category=genai.types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+                            threshold=genai.types.HarmBlockThreshold.OFF
+                        ),
+                        genai.types.SafetySetting(
+                            category=genai.types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+                            threshold=genai.types.HarmBlockThreshold.OFF
+                        ),
+                        genai.types.SafetySetting(
+                            category=genai.types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+                            threshold=genai.types.HarmBlockThreshold.OFF
+                        ),
+                        genai.types.SafetySetting(
+                            category=genai.types.HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY,
+                            threshold=genai.types.HarmBlockThreshold.OFF
+                        )
+                    ]
+                )
+            )
+
+            # 处理响应
+            for part in response.candidates[0].content.parts:
+                if part.text is not None:
+                    # 如果有文本输出，记录日志
+                    print(f"Nano Banana 文本输出: {part.text}")
+                elif part.inline_data is not None:
+                    # 返回图像数据
+                    image_data = part.inline_data.data
+                    # 确保返回的是 base64 字符串
+                    if isinstance(image_data, bytes):
+                        image_data = base64.b64encode(image_data).decode('utf-8')
+
+                    return {
+                        'success': True,
+                        'image_data': image_data,  # base64 编码的图像字符串
+                        'format': 'base64',
+                        'message': '图像生成成功'
+                    }
+
+            return {
+                'success': False,
+                'message': '未生成图像数据'
+            }
+
+        except Exception as e:
+            return {
+                'success': False,
+                'message': f'Nano Banana 生成失败: {str(e)}'
+            }
+
+    def get_task_status(self, _task_id: str) -> Dict[str, Any]:
+        """
+        Nano Banana 是同步生成，不需要轮询
+        """
+        return {
+            'success': False,
+            'message': 'Nano Banana 不支持异步任务查询'
+        }
+
+    def get_model_config(self) -> Dict[str, Any]:
+        """
+        获取 Nano Banana 模型配置
+        """
+        return {
+            'name': 'nano-banana',
+            'display_name': 'Nano Banana (Gemini 2.5 Flash Image)',
+            'description': '支持文生图、图生图、多图融合的对话式图像生成模型',
+            'sync': True,  # 同步生成
+            'parameters': {
+                'prompt': {
+                    'type': 'text',
+                    'required': True,
+                    'description': '图像生成或编辑的文本描述'
+                },
+                'input_image': {
+                    'type': 'file',
+                    'required': False,
+                    'description': '输入图像（用于图生图编辑）',
+                    'accept': 'image/*'
+                }
+                # Nano Banana 主要通过 prompt 控制，参数较少
+            }
+        }
+
+
+class FluxService(ImageGenerationService):
+    """
+    FLUX Kontext Pro 图像生成服务（保持现有功能）
+    """
+
+    def __init__(self):
+        # 使用现有的 BFL API 密钥
+        self.api_key = os.getenv('BFL_API_KEY')
+        if not self.api_key:
+            raise ValueError("BFL_API_KEY environment variable is required")
+
+        self.api_base = "https://api.bfl.ai/v1"
+        self.endpoint = f"{self.api_base}/flux-kontext-pro"
+        self.status_endpoint = f"{self.api_base}/get_result"
+
+    def generate_image(self, prompt: str, input_image: Optional[Union[bytes, Image.Image]] = None,
+                      **kwargs) -> Dict[str, Any]:
+        """
+        使用 FLUX Kontext Pro 生成图像
+        """
+        try:
+            # 构建请求参数
+            payload = {
+                'prompt': prompt,
+                'output_format': kwargs.get('output_format', 'jpeg'),
+                'safety_tolerance': int(kwargs.get('safety_tolerance', 2)),
+                'prompt_upsampling': kwargs.get('prompt_upsampling', False)
+            }
+
+            # 可选参数
+            if kwargs.get('aspect_ratio'):
+                payload['aspect_ratio'] = kwargs['aspect_ratio']
+
+            # 处理输入图像
+            if input_image is not None:
+                if isinstance(input_image, Image.Image):
+                    # 将 PIL Image 转换为 base64
+                    buffer = BytesIO()
+                    input_image.save(buffer, format='PNG')
+                    image_data = base64.b64encode(buffer.getvalue()).decode('utf-8')
+                    payload['input_image'] = f"data:image/png;base64,{image_data}"
+                elif isinstance(input_image, bytes):
+                    # 假设是已经编码的图像数据
+                    image_data = base64.b64encode(input_image).decode('utf-8')
+                    payload['input_image'] = f"data:image/png;base64,{image_data}"
+
+            # 种子参数
+            if kwargs.get('seed'):
+                try:
+                    payload['seed'] = int(kwargs['seed'])
+                except ValueError:
+                    pass
+
+            headers = {
+                'Content-Type': 'application/json',
+                'x-key': self.api_key
+            }
+
+            # 调用 FLUX API
+            response = requests.post(self.endpoint, json=payload, headers=headers)
+
+            if response.status_code == 200:
+                result = response.json()
+                return {
+                    'success': True,
+                    'task_id': result.get('id'),
+                    'polling_url': result.get('polling_url'),
+                    'message': '任务已提交'
+                }
+            else:
+                error_msg = response.json().get('detail', '图像生成请求失败')
+                return {
+                    'success': False,
+                    'message': f'FLUX API调用失败: {error_msg}'
+                }
+
+        except Exception as e:
+            return {
+                'success': False,
+                'message': f'FLUX 生成失败: {str(e)}'
+            }
+
+    def get_task_status(self, task_id: str) -> Dict[str, Any]:
+        """
+        查询 FLUX 任务状态
+        """
+        try:
+            headers = {'x-key': self.api_key}
+            response = requests.get(f"{self.status_endpoint}?id={task_id}", headers=headers)
+
+            if response.status_code == 200:
+                result = response.json()
+                bfl_status = result.get('status', 'unknown')
+
+                # 转换状态映射
+                if bfl_status == 'Ready':
+                    status = 'completed'
+                elif bfl_status in ['Task not found', 'Error']:
+                    status = 'failed'
+                elif bfl_status in ['Pending', 'Request Moderated']:
+                    status = 'pending'
+                else:
+                    status = 'running'
+
+                task_data = {
+                    'success': True,
+                    'id': task_id,
+                    'status': status,
+                    'result': None,
+                    'error': None
+                }
+
+                # 如果任务完成，提取结果
+                if status == 'completed' and result.get('result'):
+                    task_data['result'] = {
+                        'image_url': result['result'].get('sample')
+                    }
+
+                # 如果任务失败，提取错误信息
+                if status == 'failed':
+                    if bfl_status == 'Task not found':
+                        task_data['error'] = '任务不存在或已过期'
+                    else:
+                        task_data['error'] = result.get('error', bfl_status)
+
+                return task_data
+            else:
+                return {
+                    'success': False,
+                    'message': f'状态查询失败: HTTP {response.status_code}'
+                }
+
+        except Exception as e:
+            return {
+                'success': False,
+                'message': f'状态查询异常: {str(e)}'
+            }
+
+    def get_model_config(self) -> Dict[str, Any]:
+        """
+        获取 FLUX 模型配置
+        """
+        return {
+            'name': 'flux',
+            'display_name': 'FLUX Kontext Pro',
+            'description': '高质量的图像生成和编辑模型，支持异步处理',
+            'sync': False,  # 异步生成
+            'parameters': {
+                'prompt': {
+                    'type': 'text',
+                    'required': True,
+                    'description': '图像生成或编辑的文本描述'
+                },
+                'aspect_ratio': {
+                    'type': 'select',
+                    'required': False,
+                    'options': ['1:1', '16:9', '9:16', '4:3', '3:4', '21:9', '9:21'],
+                    'default': 'auto',
+                    'description': '图像宽高比'
+                },
+                'output_format': {
+                    'type': 'select',
+                    'required': False,
+                    'options': ['jpeg', 'png'],
+                    'default': 'jpeg',
+                    'description': '输出格式'
+                },
+                'safety_tolerance': {
+                    'type': 'slider',
+                    'required': False,
+                    'min': 1,
+                    'max': 5,
+                    'default': 2,
+                    'description': '安全等级'
+                },
+                'seed': {
+                    'type': 'text',
+                    'required': False,
+                    'description': '随机种子（可选）'
+                },
+                'prompt_upsampling': {
+                    'type': 'boolean',
+                    'required': False,
+                    'default': False,
+                    'description': '提示词增强'
+                },
+                'input_image': {
+                    'type': 'file',
+                    'required': False,
+                    'description': '输入图像（用于图生图编辑）',
+                    'accept': 'image/*'
+                }
+            }
+        }
+
+
+class ImageGenerationServiceFactory:
+    """
+    图像生成服务工厂类
+    """
+
+    _services = {}
+
+    @classmethod
+    def get_service(cls, model_type: str = 'nano-banana') -> ImageGenerationService:
+        """
+        获取图像生成服务实例
+
+        Args:
+            model_type: 模型类型 ('nano-banana' 或 'flux')
+
+        Returns:
+            ImageGenerationService: 对应的服务实例
+        """
+        if model_type not in cls._services:
+            if model_type == 'nano-banana':
+                cls._services[model_type] = NanoBananaService()
+            elif model_type == 'flux':
+                cls._services[model_type] = FluxService()
+            else:
+                raise ValueError(f"不支持的模型类型: {model_type}")
+
+        return cls._services[model_type]
+
+    @classmethod
+    def get_available_models(cls) -> List[Dict[str, Any]]:
+        """
+        获取所有可用的模型配置
+        """
+        models = []
+        for model_type in ['nano-banana', 'flux']:
+            try:
+                service = cls.get_service(model_type)
+                config = service.get_model_config()
+                models.append(config)
+            except Exception as e:
+                print(f"获取模型 {model_type} 配置失败: {str(e)}")
+
+        return models
+
+
+# 全局服务工厂实例
+image_generation_factory = ImageGenerationServiceFactory()

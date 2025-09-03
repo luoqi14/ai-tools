@@ -46,8 +46,8 @@ cd ../frontend
 npm install
 
 # 4. 环境变量配置
-cp .env.example .env.local
-# 编辑 .env.local 设置必要的环境变量
+cp .env.example .env
+# 编辑 .env 设置必要的环境变量
 ```
 
 ## 🎯 项目架构详解

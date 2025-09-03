@@ -74,6 +74,7 @@ import {
   ArrowLeftRight,
   Pen,
   Package,
+  Sparkles,
 } from "lucide-react";
 
 // 导入Aceternity UI组件
@@ -173,9 +174,17 @@ export default function ImageGenerator() {
   );
 
   // 参数状态
+  const [selectedModel, setSelectedModel] = useState("nano-banana"); // 默认选择 Nano Banana
+  const [availableModels, setAvailableModels] = useState<Array<{
+    name: string;
+    display_name: string;
+    description: string;
+    sync: boolean;
+    parameters: Record<string, unknown>;
+  }>>([]);
   const [aspectRatio, setAspectRatio] = useState("auto");
   const [outputFormat, setOutputFormat] = useState("jpeg");
-  const [promptUpsampling, setPromptUpsampling] = useState(false);
+  const [promptUpsampling, setPromptUpsampling] = useState(true);
   const [safetyTolerance, setSafetyTolerance] = useState(5);
   const [seed, setSeed] = useState("");
   const [useRandomSeed, setUseRandomSeed] = useState(true);
@@ -251,6 +260,43 @@ export default function ImageGenerator() {
   const [showImagePreview, setShowImagePreview] = useState(false);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
+
+  // 加载可用的模型配置
+  useEffect(() => {
+    const loadModels = async () => {
+      try {
+        const modelsData = await api.getImageGenerationModels();
+        if (modelsData) {
+          setAvailableModels(modelsData.models);
+          // 如果默认模型不在可用列表中，使用第一个可用模型
+          if (!modelsData.models.some(m => m.name === selectedModel)) {
+            setSelectedModel(modelsData.default_model || modelsData.models[0]?.name || 'nano-banana');
+          }
+        }
+      } catch (error) {
+        console.error('加载模型配置失败:', error);
+        // 设置默认模型配置
+        setAvailableModels([
+          {
+            name: 'nano-banana',
+            display_name: 'Nano Banana',
+            description: '支持文生图、图生图的对话式图像生成模型',
+            sync: true,
+            parameters: {}
+          },
+          {
+            name: 'flux',
+            display_name: 'FLUX Kontext Pro',
+            description: '高质量的图像生成和编辑模型',
+            sync: false,
+            parameters: {}
+          }
+        ]);
+      }
+    };
+
+    loadModels();
+  }, [selectedModel]);
 
   // 生成缩略图的通用函数
   const generateThumbnail = useCallback(
@@ -960,6 +1006,17 @@ export default function ImageGenerator() {
       return;
     }
 
+    // 直接使用用户输入的提示词生成图片
+    generateImageWithPrompt(prompt);
+  };
+
+  const handleOptimizePrompt = async () => {
+    // 检查是否有提示词输入
+    if (!prompt.trim()) {
+      showToast("error", "输入错误", "请输入提示词");
+      return;
+    }
+
     // 统一从canvas获取图片
     let imageToUse: File | null = null;
     if (currentImageId) {
@@ -970,7 +1027,7 @@ export default function ImageGenerator() {
       }
     }
 
-    // 先调用Gemini生成提示词
+    // 调用Gemini生成提示词
     setIsGeneratingPrompts(true);
     setOriginalUserInput(prompt);
     showToast("info", "AI正在优化提示词", "正在为您生成更好的提示词选项...");
@@ -983,7 +1040,6 @@ export default function ImageGenerator() {
 
     if (promptResponse.error) {
       showToast("error", "AI提示词生成失败", promptResponse.error);
-      // 不再自动回退，让用户知道AI服务出现了问题
       return;
     }
 
@@ -1008,6 +1064,7 @@ export default function ImageGenerator() {
 
     const request: ImageGenerationRequest = {
       prompt: selectedPrompt,
+      model_type: selectedModel, // 添加模型类型
       aspect_ratio: aspectRatio === "auto" ? undefined : aspectRatio,
       output_format: outputFormat,
       safety_tolerance: safetyTolerance,
@@ -1021,14 +1078,64 @@ export default function ImageGenerator() {
 
     if (response.error) {
       setIsGenerating(false);
-      // setProgress(0);
       showToast("error", "生成失败", response.error);
       return;
     }
 
-    if (response.task_id) {
+    // 根据模型类型处理不同的响应
+    const currentModel = availableModels.find(m => m.name === selectedModel);
+
+    if (currentModel?.sync && response.image_data) {
+      // 同步模型（如 Nano Banana）直接返回图像数据
+      showToast("success", "生成完成", "图像已生成成功！");
+
+      // 处理 base64 图像数据
+      try {
+        const imageBlob = await fetch(`data:image/png;base64,${response.image_data}`).then(r => r.blob());
+        const imageFile = new File([imageBlob], `generated-${Date.now()}.png`, { type: 'image/png' });
+
+        // 创建图像URL并添加到历史记录
+        const imageUrl = URL.createObjectURL(imageBlob);
+        const newImageId = `generated-${Date.now()}`;
+
+        const newHistoryImage = {
+          id: newImageId,
+          url: imageUrl,
+          prompt: selectedPrompt,
+          timestamp: Date.now(),
+          file: imageFile,
+          sourceImageId: currentImageId || undefined,
+          originalUserInput: originalUserInput,
+          optimizedPrompt: selectedPrompt,
+          chinesePrompt: generatedPrompts.find(p => p.english === selectedPrompt)?.chinese || selectedPrompt,
+          optimizationReason: generatedPrompts.find(p => p.english === selectedPrompt)?.reason || "AI优化提示词"
+        };
+
+        setHistoryImages(prev => [...prev.slice(-19), newHistoryImage]);
+        setCurrentImageId(newImageId);
+
+        // 生成缩略图
+        const thumbnailUrl = await generateThumbnail(imageUrl);
+        setHistoryImages(prev =>
+          prev.map(img =>
+            img.id === newImageId
+              ? { ...img, thumbnailUrl }
+              : img
+          )
+        );
+
+      } catch {
+        showToast("error", "图像处理失败", "无法处理生成的图像数据");
+      }
+
+      setIsGenerating(false);
+    } else if (response.task_id) {
+      // 异步模型（如 FLUX）需要轮询状态
       showToast("info", "请求已提交", "正在生成图片，请稍候...");
       pollTaskStatus(response.task_id);
+    } else {
+      setIsGenerating(false);
+      showToast("error", "生成失败", "未收到有效的响应数据");
     }
   };
 
@@ -1490,94 +1597,135 @@ export default function ImageGenerator() {
                         e.preventDefault();
                       }}>
                         <div className="space-y-4">
+                          {/* 模型选择 */}
                           <div className="flex items-center justify-between">
-                            <Label htmlFor="aspect-ratio" className="text-sm font-medium">纵横比</Label>
+                            <Label htmlFor="model-type" className="text-sm font-medium">生成模型</Label>
                             <Select
-                              value={aspectRatio}
-                              onValueChange={setAspectRatio}
+                              value={selectedModel}
+                              onValueChange={setSelectedModel}
                             >
                               <SelectTrigger className="w-40">
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="auto">自动</SelectItem>
-                                <SelectItem value="1:1">1:1 (正方形)</SelectItem>
-                                <SelectItem value="16:9">16:9 (宽屏)</SelectItem>
-                                <SelectItem value="9:16">9:16 (竖屏)</SelectItem>
-                                <SelectItem value="3:2">3:2 (横向)</SelectItem>
-                                <SelectItem value="2:3">2:3 (纵向)</SelectItem>
+                                {availableModels.map((model) => (
+                                  <SelectItem key={model.name} value={model.name}>
+                                    {model.display_name}
+                                  </SelectItem>
+                                ))}
                               </SelectContent>
                             </Select>
                           </div>
 
-                          <div className="flex items-center justify-between">
-                            <Label htmlFor="output-format" className="text-sm font-medium">输出格式</Label>
-                            <Select
-                              value={outputFormat}
-                              onValueChange={setOutputFormat}
-                            >
-                              <SelectTrigger className="w-40">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="jpeg">JPEG</SelectItem>
-                                <SelectItem value="png">PNG</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
 
-                          <div className="flex items-center justify-between">
-                            <Label htmlFor="safety-tolerance" className="text-sm font-medium">安全等级</Label>
-                            <Select
-                              value={safetyTolerance.toString()}
-                              onValueChange={(value) =>
-                                setSafetyTolerance(parseInt(value))
-                              }
-                            >
-                              <SelectTrigger className="w-40">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="1">1 (最严格)</SelectItem>
-                                <SelectItem value="2">2 (严格)</SelectItem>
-                                <SelectItem value="3">3 (中等)</SelectItem>
-                                <SelectItem value="4">4 (宽松)</SelectItem>
-                                <SelectItem value="5">5 (最宽松)</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
 
-                          <div className="flex items-center justify-between">
-                            <Label htmlFor="prompt-upsampling" className="text-sm font-medium">提示词增强</Label>
-                            <Switch
-                              id="prompt-upsampling"
-                              checked={promptUpsampling}
-                              onCheckedChange={setPromptUpsampling}
-                            />
-                          </div>
+                          {/* 根据选择的模型动态显示参数 */}
+                          {(() => {
+                            const showFluxParams = selectedModel === 'flux';
 
-                          <div className="flex items-center justify-between">
-                            <Label htmlFor="use-random-seed" className="text-sm font-medium">随机种子</Label>
-                            <Switch
-                              id="use-random-seed"
-                              checked={useRandomSeed}
-                              onCheckedChange={setUseRandomSeed}
-                            />
-                          </div>
+                            return (
+                              <>
+                                {/* FLUX 专用参数 */}
+                                {showFluxParams && (
+                                  <>
+                                    <div className="flex items-center justify-between">
+                                      <Label htmlFor="aspect-ratio" className="text-sm font-medium">纵横比</Label>
+                                      <Select
+                                        value={aspectRatio}
+                                        onValueChange={setAspectRatio}
+                                      >
+                                        <SelectTrigger className="w-40">
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="auto">自动</SelectItem>
+                                          <SelectItem value="1:1">1:1 (正方形)</SelectItem>
+                                          <SelectItem value="16:9">16:9 (宽屏)</SelectItem>
+                                          <SelectItem value="9:16">9:16 (竖屏)</SelectItem>
+                                          <SelectItem value="3:2">3:2 (横向)</SelectItem>
+                                          <SelectItem value="2:3">2:3 (纵向)</SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
 
-                          {!useRandomSeed && (
-                            <div className="flex items-center justify-between">
-                              <Label htmlFor="seed" className="text-sm font-medium">种子值</Label>
-                              <Input
-                                id="seed"
-                                type="text"
-                                value={seed}
-                                onChange={(e) => setSeed(e.target.value)}
-                                placeholder="输入种子值（可选）"
-                                className="w-40"
-                              />
-                            </div>
-                          )}
+                                    <div className="flex items-center justify-between">
+                                      <Label htmlFor="output-format" className="text-sm font-medium">输出格式</Label>
+                                      <Select
+                                        value={outputFormat}
+                                        onValueChange={setOutputFormat}
+                                      >
+                                        <SelectTrigger className="w-40">
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="jpeg">JPEG</SelectItem>
+                                          <SelectItem value="png">PNG</SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+
+                                    <div className="flex items-center justify-between">
+                                      <Label htmlFor="safety-tolerance" className="text-sm font-medium">安全等级</Label>
+                                      <Select
+                                        value={safetyTolerance.toString()}
+                                        onValueChange={(value) =>
+                                          setSafetyTolerance(parseInt(value))
+                                        }
+                                      >
+                                        <SelectTrigger className="w-40">
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="1">1 (最严格)</SelectItem>
+                                          <SelectItem value="2">2 (严格)</SelectItem>
+                                          <SelectItem value="3">3 (中等)</SelectItem>
+                                          <SelectItem value="4">4 (宽松)</SelectItem>
+                                          <SelectItem value="5">5 (最宽松)</SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+
+                                    <div className="flex items-center justify-between">
+                                      <Label htmlFor="prompt-upsampling" className="text-sm font-medium">提示词增强</Label>
+                                      <Switch
+                                        id="prompt-upsampling"
+                                        checked={promptUpsampling}
+                                        onCheckedChange={setPromptUpsampling}
+                                      />
+                                    </div>
+                                  </>
+                                )}
+
+
+
+                                {/* FLUX 专用参数 - 随机种子 */}
+                                {showFluxParams && (
+                                  <div className="flex items-center justify-between">
+                                    <Label htmlFor="use-random-seed" className="text-sm font-medium">随机种子</Label>
+                                    <Switch
+                                      id="use-random-seed"
+                                      checked={useRandomSeed}
+                                      onCheckedChange={setUseRandomSeed}
+                                    />
+                                  </div>
+                                )}
+
+                                {showFluxParams && !useRandomSeed && (
+                                  <div className="flex items-center justify-between">
+                                    <Label htmlFor="seed" className="text-sm font-medium">种子值</Label>
+                                    <Input
+                                      id="seed"
+                                      type="text"
+                                      value={seed}
+                                      onChange={(e) => setSeed(e.target.value)}
+                                      placeholder="输入种子值（可选）"
+                                      className="w-40"
+                                    />
+                                  </div>
+                                )}
+                              </>
+                            );
+                          })()}
                         </div>
                       </PopoverContent>
                     </Popover>
@@ -1625,6 +1773,33 @@ export default function ImageGenerator() {
                         <Download className="h-full w-full text-green-600 cursor-pointer" />
                       ),
                       onClick: isLoadingPreview ? undefined : downloadImage,
+                    },
+                  ]
+                  : []),
+                // 提示词优化按钮 - 只在有提示词时显示
+                ...(prompt.trim()
+                  ? [
+                    {
+                      title: "优化提示词",
+                      icon: isGeneratingPrompts ? (
+                        <RefreshCw className="h-full w-full animate-spin text-yellow-600" />
+                      ) : (
+                        <Sparkles className="h-full w-full text-yellow-600" />
+                      ),
+                      element: (
+                        <Button
+                          onClick={handleOptimizePrompt}
+                          disabled={isGenerating || isGeneratingPrompts || !prompt.trim()}
+                          className="h-full w-full bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white border-0 cursor-pointer"
+                          title="优化提示词"
+                        >
+                          {isGeneratingPrompts ? (
+                            <RefreshCw className="h-full w-full animate-spin" />
+                          ) : (
+                            <Sparkles className="h-full w-full" />
+                          )}
+                        </Button>
+                      ),
                     },
                   ]
                   : []),

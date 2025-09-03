@@ -58,12 +58,38 @@ export interface ImageGenerationTask {
 
 export interface ImageGenerationRequest {
   prompt: string;
+  model_type?: string; // 新增：模型类型
   aspect_ratio?: string;
   output_format?: string;
   safety_tolerance?: number;
   seed?: string;
   input_image?: File;
   prompt_upsampling?: boolean;
+}
+
+// 新增：模型配置相关类型
+export interface ModelParameter {
+  type: 'text' | 'select' | 'slider' | 'boolean' | 'file';
+  required: boolean;
+  description: string;
+  options?: string[];
+  min?: number;
+  max?: number;
+  default?: unknown;
+  accept?: string;
+}
+
+export interface ModelConfig {
+  name: string;
+  display_name: string;
+  description: string;
+  sync: boolean; // 是否同步生成
+  parameters: Record<string, ModelParameter>;
+}
+
+export interface ModelsResponse {
+  models: ModelConfig[];
+  default_model: string;
 }
 
 // 美图处理相关类型
@@ -208,11 +234,14 @@ export const api = {
   },
 
   // 图像生成
-  async generateImage(data: ImageGenerationRequest): Promise<{ task_id: string; error?: string }> {
+  async generateImage(data: ImageGenerationRequest): Promise<{ task_id?: string; image_data?: string; error?: string }> {
     try {
       const formData = new FormData();
       formData.append("prompt", data.prompt);
-      
+
+      // 添加模型类型参数
+      if (data.model_type) formData.append("model_type", data.model_type);
+
       if (data.aspect_ratio) formData.append("aspect_ratio", data.aspect_ratio);
       if (data.output_format) formData.append("output_format", data.output_format);
       if (data.safety_tolerance !== undefined) formData.append("safety_tolerance", data.safety_tolerance.toString());
@@ -226,14 +255,14 @@ export const api = {
       });
 
       const result = await response.json();
-      
+
       if (!result.success) {
-        return { task_id: '', error: result.message || '图像生成失败' };
+        return { error: result.message || '图像生成失败' };
       }
-      
+
       return result.data;
     } catch (error) {
-      return { task_id: '', error: error instanceof Error ? error.message : '网络错误' };
+      return { error: error instanceof Error ? error.message : '网络错误' };
     }
   },
 
@@ -265,6 +294,24 @@ export const api = {
   getBingImageUrl(): string {
     const timestamp = Date.now();
     return `${API_BASE_URL}/api/bing-image?t=${timestamp}`;
+  },
+
+  // 获取可用的图像生成模型配置
+  async getImageGenerationModels(): Promise<ModelsResponse | null> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/image-generation/models`);
+      const result = await response.json();
+
+      if (!result.success) {
+        console.error('获取模型配置失败:', result.message);
+        return null;
+      }
+
+      return result.data;
+    } catch (error) {
+      console.error('获取模型配置网络错误:', error);
+      return null;
+    }
   },
 
   // 美图处理相关API

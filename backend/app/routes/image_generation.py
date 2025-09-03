@@ -3,7 +3,8 @@ import requests
 import os
 import base64
 from io import BytesIO
-from ..utils.gemini_service import get_gemini_service
+from PIL import Image
+from ..utils.gemini_service import get_gemini_service, image_generation_factory
 
 image_generation_bp = Blueprint('image_generation', __name__)
 
@@ -14,108 +15,148 @@ BFL_KONTEXT_ENDPOINT = f"{BFL_API_BASE}/flux-kontext-pro"
 @image_generation_bp.route('/generate', methods=['POST'])
 def generate_image():
     """
-    统一的图像生成接口，支持文生图和图生图
-    根据是否传入input_image参数自动判断模式
+    统一的图像生成接口，支持多种模型切换
+    支持文生图和图生图，根据model_type参数选择模型
     支持JSON和FormData两种格式
     """
     # 处理不同的请求格式
     if request.content_type and 'application/json' in request.content_type:
         # JSON格式
         data = request.get_json()
+        input_image_file = None
     else:
         # FormData格式
         data = {}
         for key, value in request.form.items():
             data[key] = value
-        
+
         # 处理文件上传
+        input_image_file = None
         if 'input_image' in request.files:
-            file = request.files['input_image']
-            if file and file.filename:
-                try:
-                    # 读取文件内容并转换为base64
-                    file_content = file.read()
-                    base64_image = base64.b64encode(file_content).decode('utf-8')
-                    content_type = file.content_type or 'image/jpeg'
-                    data['input_image'] = f"data:{content_type};base64,{base64_image}"
-                except Exception as e:
-                    return jsonify({
-                        'success': False,
-                        'message': f'文件处理失败: {str(e)}'
-                    }), 400
-    
+            input_image_file = request.files['input_image']
+
     if not data or 'prompt' not in data:
         return jsonify({
             'success': False,
             'message': '缺少prompt参数'
         }), 400
-    
-    # 获取API密钥
-    api_key = os.getenv('BFL_API_KEY')
-    if not api_key:
-        return jsonify({
-            'success': False,
-            'message': 'BFL API密钥未配置'
-        }), 500
-    
-    # 构建请求参数
-    payload = {
-        'prompt': data.get('prompt'),
-        'output_format': data.get('output_format', 'jpeg'),
-        'safety_tolerance': int(data.get('safety_tolerance', 2)),
-        'prompt_upsampling': data.get('prompt_upsampling', False) == 'true'
-    }
-    
-    # aspect_ratio 可选参数，不设默认值
-    if 'aspect_ratio' in data and data['aspect_ratio']:
-        payload['aspect_ratio'] = data['aspect_ratio']
-    
-    # 如果有输入图片，则为图生图模式
-    if 'input_image' in data and data['input_image']:
-        payload['input_image'] = data['input_image']
-    
-    # 可选参数
-    if 'seed' in data and data['seed']:
-        try:
-            payload['seed'] = int(data['seed'])
-        except ValueError:
-            pass  # 忽略无效的seed值
-        
-    headers = {
-        'Content-Type': 'application/json',
-        'x-key': api_key
-    }
-    
+
+    # 获取模型类型，默认为 nano-banana
+    model_type = data.get('model_type', 'nano-banana')
+
     try:
-        # 调用Black Forest Labs官方API
-        response = requests.post(BFL_KONTEXT_ENDPOINT, json=payload, headers=headers)
-        
-        if response.status_code == 200:
-            result = response.json()
+        # 使用工厂模式获取对应的服务
+        service = image_generation_factory.get_service(model_type)
+
+        # 处理输入图像
+        input_image = None
+        if input_image_file and input_image_file.filename:
+            # 从文件上传处理
+            try:
+                file_content = input_image_file.read()
+                input_image = Image.open(BytesIO(file_content))
+            except Exception as e:
+                return jsonify({
+                    'success': False,
+                    'message': f'图像文件处理失败: {str(e)}'
+                }), 400
+        elif 'input_image' in data and data['input_image']:
+            # 从JSON数据处理（base64格式）
+            try:
+                if data['input_image'].startswith('data:'):
+                    # 处理data URI格式
+                    header, base64_data = data['input_image'].split(',', 1)
+                    image_data = base64.b64decode(base64_data)
+                    input_image = Image.open(BytesIO(image_data))
+                else:
+                    # 直接base64数据
+                    image_data = base64.b64decode(data['input_image'])
+                    input_image = Image.open(BytesIO(image_data))
+            except Exception as e:
+                return jsonify({
+                    'success': False,
+                    'message': f'base64图像解析失败: {str(e)}'
+                }), 400
+
+        # 准备参数
+        kwargs = {}
+        for key, value in data.items():
+            if key not in ['prompt', 'model_type', 'input_image']:
+                kwargs[key] = value
+
+        # 调用对应的服务生成图像
+        result = service.generate_image(
+            prompt=data['prompt'],
+            input_image=input_image,
+            **kwargs
+        )
+
+        if result['success']:
             return jsonify({
                 'success': True,
-                'data': {
-                    'task_id': result.get('id'),
-                    'polling_url': result.get('polling_url')
-                }
+                'data': result
             })
         else:
-            error_msg = response.json().get('detail', '图像生成请求失败')
             return jsonify({
                 'success': False,
-                'message': f'API调用失败: {error_msg}'
-            }), response.status_code
-            
+                'message': result.get('message', '图像生成失败')
+            }), 400
+
+    except ValueError as e:
+        return jsonify({
+            'success': False,
+            'message': str(e)
+        }), 400
     except Exception as e:
         return jsonify({
             'success': False,
-            'message': f'图像生成失败: {str(e)}'
+            'message': f'服务调用失败: {str(e)}'
         }), 500
 
 @image_generation_bp.route('/status/<task_id>', methods=['GET'])
 def get_task_status(task_id):
     """
     查询任务状态和结果
+    支持不同模型的任务查询
+    """
+    # 获取模型类型参数，默认为 flux（因为只有 flux 有异步任务）
+    model_type = request.args.get('model_type', 'flux')
+
+    try:
+        # 使用工厂模式获取对应的服务
+        service = image_generation_factory.get_service(model_type)
+
+        # 调用对应服务的状态查询方法
+        result = service.get_task_status(task_id)
+
+        if result['success']:
+            return jsonify({
+                'success': True,
+                'data': result
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': result.get('message', '状态查询失败')
+            }), 400
+
+    except ValueError as e:
+        return jsonify({
+            'success': False,
+            'message': str(e)
+        }), 400
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'状态查询异常: {str(e)}'
+        }), 500
+
+
+# 保留原有的 FLUX 专用状态查询接口（向后兼容）
+@image_generation_bp.route('/status-flux/<task_id>', methods=['GET'])
+def get_flux_task_status(task_id):
+    """
+    FLUX 专用任务状态查询（向后兼容）
     """
     api_key = os.getenv('BFL_API_KEY')
     if not api_key:
@@ -123,22 +164,22 @@ def get_task_status(task_id):
             'success': False,
             'message': 'BFL API密钥未配置'
         }), 500
-    
+
     headers = {
         'x-key': api_key
     }
-    
+
     try:
         # 查询任务状态
         status_url = f"{BFL_API_BASE}/get_result"
         response = requests.get(f"{status_url}?id={task_id}", headers=headers)
-        
+
         if response.status_code == 200:
             result = response.json()
-            
+
             # 将BFL API的状态转换为我们的状态格式
             bfl_status = result.get('status', 'unknown')
-            
+
             # 转换状态映射
             if bfl_status == 'Ready':
                 status = 'completed'
@@ -148,7 +189,7 @@ def get_task_status(task_id):
                 status = 'pending'
             else:
                 status = 'running'
-            
+
             # 构建返回数据
             task_data = {
                 'id': task_id,
@@ -156,20 +197,20 @@ def get_task_status(task_id):
                 'result': None,
                 'error': None
             }
-            
+
             # 如果任务完成，提取结果
             if status == 'completed' and result.get('result'):
                 task_data['result'] = {
                     'image_url': result['result'].get('sample')
                 }
-            
+
             # 如果任务失败，提取错误信息
             if status == 'failed':
                 if bfl_status == 'Task not found':
                     task_data['error'] = '任务不存在或已过期'
                 else:
                     task_data['error'] = result.get('error', bfl_status)
-            
+
             return jsonify({
                 'success': True,
                 'data': task_data
@@ -356,4 +397,25 @@ def generate_prompts():
             'success': False,
             'message': str(e),
             'error_type': 'gemini_api_error'
-        }), 500 
+        }), 500
+
+
+@image_generation_bp.route('/models', methods=['GET'])
+def get_available_models():
+    """
+    获取所有可用的图像生成模型配置
+    """
+    try:
+        models = image_generation_factory.get_available_models()
+        return jsonify({
+            'success': True,
+            'data': {
+                'models': models,
+                'default_model': 'nano-banana'
+            }
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'获取模型配置失败: {str(e)}'
+        }), 500
