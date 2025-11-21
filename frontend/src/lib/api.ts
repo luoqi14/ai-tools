@@ -58,13 +58,14 @@ export interface ImageGenerationTask {
 
 export interface ImageGenerationRequest {
   prompt: string;
-  model_type?: string; // 新增：模型类型
+  model_type?: string; // 模型类型
   aspect_ratio?: string;
   output_format?: string;
   safety_tolerance?: number;
   seed?: string;
   input_image?: File;
   prompt_upsampling?: boolean;
+  image_size?: string; // 新增：图像分辨率 (1K, 2K, 4K) - Nano Banana Pro 专用
 }
 
 // 新增：模型配置相关类型
@@ -248,6 +249,7 @@ export const api = {
       if (data.seed) formData.append("seed", data.seed);
       if (data.prompt_upsampling !== undefined) formData.append("prompt_upsampling", data.prompt_upsampling.toString());
       if (data.input_image) formData.append("input_image", data.input_image);
+      if (data.image_size) formData.append("image_size", data.image_size); // Nano Banana Pro 分辨率参数
 
       const response = await fetch(`${API_BASE_URL}/api/image-generation/generate`, {
         method: 'POST',

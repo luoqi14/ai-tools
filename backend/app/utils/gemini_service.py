@@ -370,7 +370,8 @@ class ImageGenerationService(ABC):
 
 class NanoBananaService(ImageGenerationService):
     """
-    Nano Banana (Gemini 2.5 Flash Image Preview) 图像生成服务
+    Nano Banana Pro (Gemini 3 Pro Image Preview) 图像生成服务
+    支持原生 4K 生成、多种长宽比和分辨率选择
     """
 
     def __init__(self):
@@ -381,10 +382,10 @@ class NanoBananaService(ImageGenerationService):
 
         # 初始化 Gemini 客户端
         self.client = genai.Client(api_key=self.api_key)
-        self.model_name = "gemini-2.5-flash-image-preview"
+        self.model_name = "gemini-3-pro-image-preview"
 
     def generate_image(self, prompt: str, input_image: Optional[Union[bytes, Image.Image]] = None,
-                      **_kwargs) -> Dict[str, Any]:
+                      **kwargs) -> Dict[str, Any]:
         """
         使用 Nano Banana 生成图像
         """
@@ -407,34 +408,59 @@ class NanoBananaService(ImageGenerationService):
                         'message': '不支持的图像格式'
                     }
 
+            # 构建配置对象
+            config_params = {
+                'safety_settings': [
+                    genai.types.SafetySetting(
+                        category=genai.types.HarmCategory.HARM_CATEGORY_HARASSMENT,
+                        threshold=genai.types.HarmBlockThreshold.OFF
+                    ),
+                    genai.types.SafetySetting(
+                        category=genai.types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+                        threshold=genai.types.HarmBlockThreshold.OFF
+                    ),
+                    genai.types.SafetySetting(
+                        category=genai.types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+                        threshold=genai.types.HarmBlockThreshold.OFF
+                    ),
+                    genai.types.SafetySetting(
+                        category=genai.types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+                        threshold=genai.types.HarmBlockThreshold.OFF
+                    ),
+                    genai.types.SafetySetting(
+                        category=genai.types.HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY,
+                        threshold=genai.types.HarmBlockThreshold.OFF
+                    )
+                ]
+            }
+
+            # 添加 imageConfig 支持 (Nano Banana Pro 新功能)
+            aspect_ratio = kwargs.get('aspect_ratio')
+            image_size = kwargs.get('image_size')
+
+            if aspect_ratio or image_size:
+                image_config_params = {}
+                if aspect_ratio and aspect_ratio != 'auto':
+                    image_config_params['aspect_ratio'] = aspect_ratio
+                if image_size:
+                    image_config_params['image_size'] = image_size
+
+                # 使用 types.ImageConfig 类 (google-genai >= 1.52.0)
+                if image_config_params:
+                    config_params['image_config'] = genai.types.ImageConfig(**image_config_params)
+
+            # 添加 Google Search 支持 (Nano Banana Pro 新功能)
+            # 模型会自动决定是否使用搜索，无需用户手动控制
+            google_search_tool = genai.types.Tool(
+                google_search=genai.types.GoogleSearch()
+            )
+            config_params['tools'] = [google_search_tool]
+
             # 调用 Gemini API
             response = self.client.models.generate_content(
                 model=self.model_name,
                 contents=contents,
-                config=genai.types.GenerateContentConfig(
-                    safety_settings=[
-                        genai.types.SafetySetting(
-                            category=genai.types.HarmCategory.HARM_CATEGORY_HARASSMENT,
-                            threshold=genai.types.HarmBlockThreshold.OFF
-                        ),
-                        genai.types.SafetySetting(
-                            category=genai.types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-                            threshold=genai.types.HarmBlockThreshold.OFF
-                        ),
-                        genai.types.SafetySetting(
-                            category=genai.types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-                            threshold=genai.types.HarmBlockThreshold.OFF
-                        ),
-                        genai.types.SafetySetting(
-                            category=genai.types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-                            threshold=genai.types.HarmBlockThreshold.OFF
-                        ),
-                        genai.types.SafetySetting(
-                            category=genai.types.HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY,
-                            threshold=genai.types.HarmBlockThreshold.OFF
-                        )
-                    ]
-                )
+                config=genai.types.GenerateContentConfig(**config_params)
             )
 
             # 处理响应
@@ -478,12 +504,12 @@ class NanoBananaService(ImageGenerationService):
 
     def get_model_config(self) -> Dict[str, Any]:
         """
-        获取 Nano Banana 模型配置
+        获取 Nano Banana Pro 模型配置
         """
         return {
             'name': 'nano-banana',
-            'display_name': 'Nano Banana (Gemini 2.5 Flash Image)',
-            'description': '支持文生图、图生图、多图融合的对话式图像生成模型',
+            'display_name': 'Nano Banana Pro (Gemini 3 Pro Image)',
+            'description': '支持原生 4K 生成、文生图、图生图、多图融合的专业级对话式图像生成模型',
             'sync': True,  # 同步生成
             'parameters': {
                 'prompt': {
@@ -496,8 +522,21 @@ class NanoBananaService(ImageGenerationService):
                     'required': False,
                     'description': '输入图像（用于图生图编辑）',
                     'accept': 'image/*'
+                },
+                'aspect_ratio': {
+                    'type': 'select',
+                    'required': False,
+                    'description': '输出图像的长宽比',
+                    'options': ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'],
+                    'default': '1:1'
+                },
+                'image_size': {
+                    'type': 'select',
+                    'required': False,
+                    'description': '输出图像的分辨率等级',
+                    'options': ['1K', '2K', '4K'],
+                    'default': '1K'
                 }
-                # Nano Banana 主要通过 prompt 控制，参数较少
             }
         }
 

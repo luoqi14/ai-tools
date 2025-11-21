@@ -183,11 +183,12 @@ export default function ImageGenerator() {
     parameters: Record<string, unknown>;
   }>>([]);
   const [aspectRatio, setAspectRatio] = useState("auto");
-  const [outputFormat, setOutputFormat] = useState("jpeg");
+  const [outputFormat, setOutputFormat] = useState("png"); // 默认使用 PNG 格式
   const [promptUpsampling, setPromptUpsampling] = useState(true);
   const [safetyTolerance, setSafetyTolerance] = useState(5);
   const [seed, setSeed] = useState("");
   const [useRandomSeed, setUseRandomSeed] = useState(true);
+  const [imageSize, setImageSize] = useState("1K"); // Nano Banana Pro 分辨率选择
 
   // 比较模式状态
   const [isCompareMode, setIsCompareMode] = useState(false);
@@ -1071,6 +1072,7 @@ export default function ImageGenerator() {
       seed: useRandomSeed ? undefined : seed,
       input_image: imageToUse || undefined,
       prompt_upsampling: promptUpsampling,
+      image_size: selectedModel === "nano-banana" ? imageSize : undefined, // Nano Banana Pro 分辨率
     };
 
     showToast("info", "开始生成", "正在提交生成请求...");
@@ -1622,9 +1624,57 @@ export default function ImageGenerator() {
                           {/* 根据选择的模型动态显示参数 */}
                           {(() => {
                             const showFluxParams = selectedModel === 'flux';
+                            const showNanoBananaParams = selectedModel === 'nano-banana';
 
                             return (
                               <>
+                                {/* Nano Banana Pro 专用参数 */}
+                                {showNanoBananaParams && (
+                                  <>
+                                    <div className="flex items-center justify-between">
+                                      <Label htmlFor="image-size" className="text-sm font-medium">分辨率</Label>
+                                      <Select
+                                        value={imageSize}
+                                        onValueChange={setImageSize}
+                                      >
+                                        <SelectTrigger className="w-40">
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="1K">1K (标准)</SelectItem>
+                                          <SelectItem value="2K">2K (高清)</SelectItem>
+                                          <SelectItem value="4K">4K (超高清)</SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+
+                                    <div className="flex items-center justify-between">
+                                      <Label htmlFor="aspect-ratio-nb" className="text-sm font-medium">纵横比</Label>
+                                      <Select
+                                        value={aspectRatio}
+                                        onValueChange={setAspectRatio}
+                                      >
+                                        <SelectTrigger className="w-40">
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="auto">自动</SelectItem>
+                                          <SelectItem value="1:1">1:1 (正方形)</SelectItem>
+                                          <SelectItem value="16:9">16:9 (宽屏)</SelectItem>
+                                          <SelectItem value="9:16">9:16 (竖屏)</SelectItem>
+                                          <SelectItem value="21:9">21:9 (超宽屏)</SelectItem>
+                                          <SelectItem value="3:2">3:2 (横向)</SelectItem>
+                                          <SelectItem value="2:3">2:3 (纵向)</SelectItem>
+                                          <SelectItem value="4:3">4:3 (横向)</SelectItem>
+                                          <SelectItem value="3:4">3:4 (纵向)</SelectItem>
+                                          <SelectItem value="4:5">4:5 (纵向)</SelectItem>
+                                          <SelectItem value="5:4">5:4 (横向)</SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                  </>
+                                )}
+
                                 {/* FLUX 专用参数 */}
                                 {showFluxParams && (
                                   <>
