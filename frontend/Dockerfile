@@ -1,5 +1,5 @@
 # 构建阶段
-FROM node:18-alpine AS builder
+FROM node:20-alpine AS builder
 
 # 设置工作目录
 WORKDIR /app
@@ -28,7 +28,7 @@ ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
 RUN pnpm build
 
 # 生产阶段 - 使用简单的静态文件服务器
-FROM node:18-alpine AS runner
+FROM node:20-alpine AS runner
 
 # 设置工作目录
 WORKDIR /app

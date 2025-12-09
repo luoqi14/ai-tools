@@ -3,8 +3,9 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   // React编译器配置 - React 19自动优化
   experimental: {
-    reactCompiler: true,
+    // reactCompiler has been moved to top-level in newer Next.js versions
   },
+  reactCompiler: true,
   
   // 静态导出配置 - 仅在生产构建时使用
   ...(process.env.NODE_ENV === 'production' && {
